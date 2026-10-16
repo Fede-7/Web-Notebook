@@ -83,6 +83,16 @@ async function dbClearAllPdfs() {
   });
 }
 
+async function dbGetPdf(path) {
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_PDFS, 'readonly');
+    const request = tx.objectStore(STORE_PDFS).get(path);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error);
+  });
+}
+
 /* ==========================================================================
    2. GESTIONE TEMA (GIORNO / NOTTE)
    ========================================================================== */
@@ -592,6 +602,9 @@ function renderPdfList() {
               <span class="meta-separator">·</span>
               <span>${formatDate(card.updatedAt).split(',')[0]}</span>
             </div>
+            <span class="pdf-download">
+              Scarica
+            </span>
             <span class="pdf-card-action-hint">
               Leggi PDF
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1308,6 +1321,59 @@ document.addEventListener('DOMContentLoaded', async () => {
       } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
         prevPage();
       }
+    }
+  });
+});
+
+
+
+// Funzione per avviare i download
+// Funzione per avviare i download
+async function downloadPdf(pdfData, sha) {
+  try {
+    // pdfData può essere un record completo oppure il path.
+    // Se è un record con blob, lo usiamo direttamente.
+    let record = pdfData && pdfData.blob ? pdfData : null;
+
+    if (!record) {
+      const path = typeof pdfData === 'string' ? pdfData : null;
+      const all = await dbGetAllPdfs();
+      record = all.find(p => (path && p.path === path) || (sha && p.sha === sha));
+    }
+
+    if (!record || !record.blob) {
+      showToast('File non trovato in memoria offline. Aggiorna prima la sincronizzazione.', 'error');
+      return;
+    }
+
+    const url = URL.createObjectURL(record.blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = record.fileName || 'documento.pdf';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    // Rilascia l'URL dopo che il download è partito
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+    showToast(`Download avviato: ${record.fileName}`, 'success');
+  } catch (err) {
+    console.error('Errore download PDF:', err);
+    showToast('Impossibile scaricare il PDF: ' + err.message, 'error');
+  }
+}
+
+
+const downloadButtons = container.querySelectorAll('.pdf-download');
+
+downloadButtons.forEach(btn => {
+  btn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const path = btn.closest('.pdf-card').getAttribute('data-path');
+    const item = allPdfs.find(p => p.path === path);
+    if (item) {
+      downloadPdf(item);
     }
   });
 });
