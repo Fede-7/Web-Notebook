@@ -641,6 +641,20 @@ function renderPdfList() {
       }
     });
   });
+
+  // Bottone "Scarica": stopPropagation evita che il click apra anche il visualizzatore.
+  // I listener vanno ricollegati a ogni render perché container.innerHTML ricrea il DOM.
+  const downloadButtons = container.querySelectorAll('.pdf-download');
+  downloadButtons.forEach(btn => {
+    btn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const path = btn.closest('.pdf-card').getAttribute('data-path');
+      const item = allPdfs.find(p => p.path === path);
+      if (item) {
+        downloadPdf(item);
+      }
+    });
+  });
 }
 
 function escapeHtml(str) {
@@ -1363,17 +1377,3 @@ async function downloadPdf(pdfData, sha) {
     showToast('Impossibile scaricare il PDF: ' + err.message, 'error');
   }
 }
-
-
-const downloadButtons = container.querySelectorAll('.pdf-download');
-
-downloadButtons.forEach(btn => {
-  btn.addEventListener('click', (event) => {
-    event.stopPropagation();
-    const path = btn.closest('.pdf-card').getAttribute('data-path');
-    const item = allPdfs.find(p => p.path === path);
-    if (item) {
-      downloadPdf(item);
-    }
-  });
-});
