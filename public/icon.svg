@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="128" fill="#0f172a" />
+  <defs>
+    <linearGradient id="pdfGrad" x1="120" y1="100" x2="392" y2="412" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#f43f5e" />
+      <stop offset="100%" stop-color="#be123c" />
+    </linearGradient>
+    <filter id="shadow" x="90" y="80" width="332" height="372" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000" flood-opacity="0.35" />
+    </filter>
+  </defs>
+  <!-- Document body -->
+  <g filter="url(#shadow)">
+    <path d="M140 100 H310 L372 162 V400 C372 411.046 363.046 420 352 420 H140 C128.954 420 120 411.046 120 400 V120 C120 108.954 128.954 100 140 100 Z" fill="url(#pdfGrad)" />
+    <!-- Fold -->
+    <path d="M310 100 V152 C310 157.523 314.477 162 320 162 H372 Z" fill="#fda4af" opacity="0.9" />
+    <!-- Document lines -->
+    <rect x="160" y="220" width="192" height="18" rx="9" fill="#ffffff" />
+    <rect x="160" y="264" width="140" height="18" rx="9" fill="#ffffff" opacity="0.85" />
+    <rect x="160" y="308" width="168" height="18" rx="9" fill="#ffffff" opacity="0.85" />
+    <!-- PDF badge -->
+    <rect x="160" y="354" width="64" height="24" rx="6" fill="#881337" />
+    <text x="192" y="371" fill="#ffffff" font-family="system-ui, sans-serif" font-size="13" font-weight="800" text-anchor="middle" letter-spacing="1">PDF</text>
+  </g>
+</svg>

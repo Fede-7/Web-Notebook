@@ -1,0 +1,6 @@
+{
+  "name": "Note PDF PWA",
+  "description": "PWA per la lettura e sincronizzazione offline di dispense e note PDF da repository GitHub su tablet.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

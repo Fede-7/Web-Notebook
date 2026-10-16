@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  <title>Note PDF - GitHub Reader PWA</title>
+  <meta name="description" content="Visualizzatore e sincronizzatore offline di dispense universitarie e note PDF da repository GitHub su tablet.">
+  <meta name="theme-color" content="#090d16">
+
+  <!-- Configurazione PWA & Icone -->
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" type="image/svg+xml" href="./icon.svg">
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="NotePDF">
+
+  <!-- OpenGraph & Social -->
+  <meta property="og:title" content="Note PDF - GitHub Reader PWA">
+  <meta property="og:description" content="Visualizzatore e sincronizzatore offline di dispense universitarie e note PDF da repository GitHub su tablet.">
+  <meta property="og:type" content="website">
+
+  <!-- Fogli di Stile -->
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    svg { max-width: 100%; height: auto; }
+    .search-icon { width: 18px !important; height: 18px !important; }
+    .brand-icon { width: 36px !important; height: 36px !important; }
+    .pdf-card-icon svg { width: 24px !important; height: 24px !important; }
+  </style>
+
+  <!-- PDF.js da CDN (messo in cache dal Service Worker per uso offline) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Navigation Bar -->
+    <header class="top-nav" role="banner">
+      <div class="brand-zone">
+        <img src="./icon.svg" alt="Logo Note PDF" class="brand-icon" width="36" height="36">
+        <div>
+          <h1 class="brand-title">Note PDF</h1>
+        </div>
+      </div>
+
+      <nav class="nav-actions" aria-label="Azioni principali">
+        <!-- Pulsante Installazione PWA (appare se installabile) -->
+        <button id="btn-install-pwa" class="btn-secondary" style="display: none;" title="Installa come applicazione PWA sul tuo dispositivo">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span class="btn-text">Installa App</span>
+        </button>
+
+        <!-- Pulsante Aggiorna da GitHub -->
+        <button id="btn-sync" class="btn-primary" title="Sincronizza modifiche da GitHub (ETag)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+          <span class="btn-text">Aggiorna</span>
+        </button>
+
+        <!-- Toggle Tema Giorno / Notte -->
+        <button id="btn-toggle-theme" class="btn-icon" aria-label="Cambia tema giorno/notte" title="Cambia tema">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+        </button>
+      </nav>
+    </header>
+
+    <!-- Barra Avanzamento Sincronizzazione -->
+    <div id="sync-progress-banner" class="sync-progress-banner hidden" role="region" aria-label="Progresso sincronizzazione">
+      <div class="progress-header">
+        <span id="progress-label">Verifica aggiornamenti...</span>
+      </div>
+      <div class="progress-track">
+        <div id="progress-fill" class="progress-fill"></div>
+      </div>
+    </div>
+
+    <!-- Sotto-barra: Stato Ultima Sincronizzazione e Ricerca Rapida -->
+    <div class="sub-bar">
+      <div class="sync-meta-info">
+        <span id="status-dot" class="status-dot" title="Online"></span>
+        <span id="sync-meta-text">Nessuna sincronizzazione effettuata</span>
+      </div>
+
+      <div class="search-box">
+        <svg class="search-icon" width="18" height="18" style="width: 18px; height: 18px; max-width: 18px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" id="search-input" class="search-input" placeholder="Cerca materia o semestre..." aria-label="Cerca materia o semestre">
+        <button id="search-clear" class="search-clear" aria-label="Cancella testo di ricerca">✕</button>
+      </div>
+    </div>
+
+    <!-- Contenuto Principale: Box e Card dei PDF -->
+    <main class="main-content">
+      <div id="pdf-groups-container"></div>
+
+      <!-- Stato Vuoto (Empty State) -->
+      <div id="empty-state" class="empty-state">
+        <div class="empty-state-icon" aria-hidden="true">
+          <svg width="32" height="32" style="width: 32px; height: 32px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="12" y1="18" x2="12" y2="12"></line>
+            <line x1="9" y1="15" x2="15" y2="15"></line>
+          </svg>
+        </div>
+        <h2 id="empty-state-title" class="empty-state-title">Nessun PDF scaricato</h2>
+        <p id="empty-state-desc" class="empty-state-desc">
+          Premi <strong>Aggiorna</strong> per scansionare la repository GitHub e scaricare i PDF sul tuo dispositivo per la lettura offline, oppure prova subito con i dati di esempio.
+        </p>
+        <div class="empty-state-actions">
+          <button id="btn-empty-sync" class="btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+            <span>Aggiorna da GitHub</span>
+          </button>
+          <button id="btn-empty-demo" class="btn-secondary">
+            Carica note di esempio (Demo)
+          </button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- VISUALIZZATORE PDF A SCHERMO INTERO (PDF.js) -->
+  <div id="pdf-viewer-overlay" class="pdf-viewer-overlay hidden" role="dialog" aria-modal="true" aria-label="Visualizzatore PDF">
+    <!-- Toolbar Superiore Visualizzatore -->
+    <header class="pdf-viewer-toolbar">
+      <div class="viewer-left-group">
+        <button id="btn-viewer-back" class="btn-viewer-back" title="Torna alla schermata principale (Esc)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+          <span>Indietro</span>
+        </button>
+
+        <div style="min-width: 0;">
+          <h2 id="viewer-doc-title" class="viewer-doc-title">Titolo Dispensa</h2>
+          <div id="viewer-doc-subtitle" class="viewer-doc-subtitle">Percorso / Nome File</div>
+        </div>
+      </div>
+
+      <!-- Controlli di Lettura: Paginazione, Zoom, Modalità Notturna -->
+      <div class="viewer-controls-group">
+        <!-- Paginazione -->
+        <button id="btn-prev-page" class="viewer-btn-icon" title="Pagina precedente (Freccia Sinistra)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
+
+        <div class="viewer-page-indicator">
+          <input type="number" id="page-input" class="page-input" min="1" value="1" aria-label="Numero pagina">
+          <span>/</span>
+          <span id="total-pages">1</span>
+        </div>
+
+        <button id="btn-next-page" class="viewer-btn-icon" title="Pagina successiva (Freccia Destra)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
+
+        <!-- Zoom (visibile su tablet e desktop, nascosto nella barra su smartphone) -->
+        <div class="viewer-zoom-group">
+          <button id="btn-zoom-out" class="viewer-btn-icon" title="Rimpicciolisci">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+          </button>
+          <button id="btn-reset-zoom" class="viewer-btn-icon" title="Adatta a larghezza">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
+          </button>
+          <button id="btn-zoom-in" class="viewer-btn-icon" title="Ingrandisci">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+          </button>
+        </div>
+
+        <!-- Modalità Notturna Lettura PDF -->
+        <button id="btn-invert-pdf" class="viewer-btn-icon" title="Inverti colori PDF per lettura al buio">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Area Foglio PDF -->
+    <div id="pdf-viewer-stage" class="pdf-viewer-stage">
+      <div id="viewer-loading" class="viewer-loading-state hidden">
+        <div class="spinner"></div>
+        <span>Caricamento PDF...</span>
+      </div>
+    </div>
+
+    <!-- Controlli Zoom Fluttuanti per Mobile (scompare su desktop) -->
+    <div class="viewer-floating-zoom" aria-label="Controlli zoom rapido">
+      <button id="btn-zoom-out-float" class="viewer-fab-btn" title="Rimpicciolisci">−</button>
+      <button id="btn-reset-zoom-float" class="viewer-fab-btn font-mono" title="Adatta a larghezza schermo">Adatta</button>
+      <button id="btn-zoom-in-float" class="viewer-fab-btn" title="Ingrandisci">+</button>
+    </div>
+  </div>
+
+  <!-- MODAL IMPOSTAZIONI E TOKEN GITHUB -->
+  <div id="settings-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-settings-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="modal-settings-title" class="modal-title">Impostazioni Repository & Token</h2>
+        <button id="btn-close-settings" class="btn-icon" aria-label="Chiudi impostazioni">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div id="env-security-badge" style="display: none; margin-bottom: 0.5rem;"></div>
+
+        <div class="form-group">
+          <label for="cfg-owner" class="form-label">Proprietario GitHub (OWNER)</label>
+          <input type="text" id="cfg-owner" class="form-input" placeholder="es. federicodellini">
+        </div>
+
+        <div class="form-group">
+          <label for="cfg-repo" class="form-label">Nome Repository (REPO)</label>
+          <input type="text" id="cfg-repo" class="form-input" placeholder="es. obsidian-notes">
+        </div>
+
+        <div class="form-group">
+          <label for="cfg-branch" class="form-label">Ramo Git (BRANCH)</label>
+          <input type="text" id="cfg-branch" class="form-input" placeholder="es. main">
+        </div>
+
+        <div class="form-group">
+          <label for="cfg-root-path" class="form-label">Cartella Radice da Scansionare (ROOT_PATH)</label>
+          <input type="text" id="cfg-root-path" class="form-input" placeholder="es. 00 - Obsidian Notes">
+          <span class="form-help">I percorsi interni seguiranno la struttura: <em>ROOT_PATH / Anno / Semestre / Materia / main.pdf</em></span>
+        </div>
+
+        <div class="form-group">
+          <label for="cfg-exclude-dirs" class="form-label">Cartelle da Ignorare (EXCLUDE_DIRS)</label>
+          <input type="text" id="cfg-exclude-dirs" class="form-input" placeholder="assets, asset, Wait, Spunto, Essenziale">
+          <span class="form-help">Nomi di cartelle separati da virgola. I PDF dentro queste cartelle non verranno considerati.</span>
+        </div>
+
+        <div class="form-group">
+          <label for="cfg-token" class="form-label">GitHub Personal Access Token (Opzionale)</label>
+          <div class="input-password-wrap">
+            <input type="password" id="cfg-token" class="form-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
+            <button type="button" id="btn-toggle-token" class="btn-toggle-visibility" title="Mostra/Nascondi Token">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </button>
+          </div>
+          <span class="form-help">Necessario solo per repository private o per aumentare il limite di chiamate API a 5.000/ora. Viene salvato esclusivamente in locale (localStorage).</span>
+        </div>
+
+        <div class="form-group" style="padding-top: 0.5rem; border-top: 1px solid var(--border-color);">
+          <div style="font-size: 0.8125rem; font-weight: 600; margin-bottom: 0.25rem;">Memoria Locale Offline</div>
+          <div id="storage-stats" style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem;">0 file salvati</div>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button type="button" id="btn-load-demo" class="btn-secondary" style="font-size: 0.8125rem; min-height: 38px;">
+              Carica Dati Demo
+            </button>
+            <button type="button" id="btn-clear-storage" class="btn-secondary" style="font-size: 0.8125rem; min-height: 38px; color: var(--danger);">
+              Svuota Memoria Offline
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" id="btn-reset-settings" class="btn-secondary" style="color: var(--text-muted);">
+          Ripristina Default
+        </button>
+        <div style="display: flex; gap: 0.5rem;">
+          <button type="button" id="btn-save-settings" class="btn-primary">
+            Salva Impostazioni
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Contenitore Notifiche Toast -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <!-- Script Applicativi -->
+  <script src="./config.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
