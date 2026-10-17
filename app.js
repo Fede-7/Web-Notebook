@@ -889,6 +889,9 @@ async function renderCurrentPage() {
     currentRenderTask = page.render(renderContext);
     await currentRenderTask.promise;
     currentRenderTask = null;
+
+    // Layer dei link: rende cliccabili i link interni (indice/sommario) ed esterni
+    await addLinkAnnotations(page, viewport, pageContainer);
   } catch (renderError) {
     if (renderError && (renderError.name === 'RenderingCancelledException' || renderError.message?.includes('cancelled'))) {
       // Normale annullamento per cambio pagina rapido o chiusura
@@ -903,6 +906,97 @@ async function renderCurrentPage() {
       currentPageNum = nextNum;
       renderCurrentPage();
     }
+  }
+}
+
+/* ---------- Link cliccabili (indice/sommario del PDF) ---------- */
+
+function goToPage(num) {
+  if (!currentPdfDoc) return;
+  if (Number.isInteger(num) && num >= 1 && num <= currentPdfDoc.numPages) {
+    currentPageNum = num;
+    const stage = document.getElementById('pdf-viewer-stage');
+    if (stage) stage.scrollTop = 0;
+    renderCurrentPage();
+  }
+}
+
+async function addLinkAnnotations(page, viewport, pageContainer) {
+  if (!window.pdfjsLib || !pageContainer || !page) return;
+
+  let annotations = [];
+  try {
+    annotations = await page.getAnnotations({ intent: 'display' });
+  } catch (e) {
+    console.warn('[Viewer] Annotazioni non disponibili:', e);
+    return;
+  }
+
+  for (const annot of annotations) {
+    if (annot.subtype !== 'Link' || !annot.rect) continue;
+
+    // Converte il rettangolo da coordinate PDF a coordinate schermo (viewport)
+    let rect;
+    try {
+      rect = viewport.convertToViewportRectangle(annot.rect);
+    } catch (e) {
+      continue;
+    }
+
+    const left = Math.min(rect[0], rect[2]);
+    const top = Math.min(rect[1], rect[3]);
+    const width = Math.abs(rect[2] - rect[0]);
+    const height = Math.abs(rect[3] - rect[1]);
+    if (width < 1 || height < 1) continue;
+
+    const linkEl = document.createElement('a');
+    linkEl.className = 'pdf-link-annotation';
+    linkEl.style.left = `${left}px`;
+    linkEl.style.top = `${top}px`;
+    linkEl.style.width = `${width}px`;
+    linkEl.style.height = `${height}px`;
+
+    if (annot.url) {
+      // Link esterno (http, mailto, ...): apre in una nuova scheda
+      linkEl.href = annot.url;
+      linkEl.target = '_blank';
+      linkEl.rel = 'noopener noreferrer';
+      linkEl.title = annot.url;
+    } else {
+      // Link interno (GoTo): risolve la destinazione in numero di pagina
+      linkEl.href = '#';
+      linkEl.title = 'Vai alla pagina collegata';
+      linkEl.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!currentPdfDoc) return;
+        try {
+          let dest = annot.dest;
+          if (typeof dest === 'string') {
+            dest = await currentPdfDoc.getDestination(dest);
+          }
+          if (Array.isArray(dest) && dest.length > 0) {
+            const ref = dest[0];
+            let pageIndex = null;
+            if (ref && typeof ref === 'object') {
+              pageIndex = await currentPdfDoc.getPageIndex(ref);
+            } else if (typeof ref === 'number') {
+              pageIndex = ref;
+            }
+            if (pageIndex !== null) {
+              goToPage(pageIndex + 1);
+              return;
+            }
+          }
+          showToast('Destinazione del link non trovata nel documento', 'info');
+        } catch (e) {
+          console.warn('[Viewer] Errore navigazione link PDF:', e);
+          showToast('Impossibile seguire il link interno', 'error');
+        }
+      });
+    }
+
+    pageContainer.appendChild(linkEl);
   }
 }
 
