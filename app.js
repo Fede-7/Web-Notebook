@@ -692,6 +692,7 @@ let pageRenderingQueue = null;
 let isPdfInvertMode = false;
 let currentRenderTask = null;
 let currentLoadingTask = null;
+let detectedIndexPageNum = 2;
 
 async function openPdfViewer(pdfItem) {
   if (!pdfItem) return;
@@ -751,6 +752,38 @@ async function openPdfViewer(pdfItem) {
     currentLoadingTask = window.pdfjsLib.getDocument({ data: dataCopy });
     currentPdfDoc = await currentLoadingTask.promise;
     currentLoadingTask = null;
+
+    // Rileva la pagina dell'indice (di default pagina 2 se presente, o risolve da Outline/Bookmarks)
+    detectedIndexPageNum = currentPdfDoc.numPages >= 2 ? 2 : 1;
+    try {
+      const outline = await currentPdfDoc.getOutline();
+      if (outline && outline.length > 0) {
+        for (const outlineItem of outline) {
+          const t = (outlineItem.title || '').toLowerCase();
+          if (t.includes('indice') || t.includes('sommario') || t.includes('contents') || t.includes('table of contents')) {
+            let dest = outlineItem.dest;
+            if (typeof dest === 'string') {
+              dest = await currentPdfDoc.getDestination(dest);
+            }
+            if (Array.isArray(dest) && dest.length > 0) {
+              const ref = dest[0];
+              let pageIdx = null;
+              if (ref && typeof ref === 'object') {
+                pageIdx = await currentPdfDoc.getPageIndex(ref);
+              } else if (typeof ref === 'number') {
+                pageIdx = ref;
+              }
+              if (pageIdx !== null && pageIdx >= 0) {
+                detectedIndexPageNum = pageIdx + 1;
+                break;
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Viewer] Impossibile recuperare outline:', e);
+    }
 
     const totalPagesEl = document.getElementById('total-pages');
     if (totalPagesEl) totalPagesEl.textContent = currentPdfDoc.numPages;
@@ -1470,24 +1503,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   const nextPageBtn = document.getElementById('btn-next-page');
   if (nextPageBtn) nextPageBtn.addEventListener('click', nextPage);
 
-  const zoomInBtn = document.getElementById('btn-zoom-in');
-  if (zoomInBtn) zoomInBtn.addEventListener('click', zoomIn);
-
-  const zoomOutBtn = document.getElementById('btn-zoom-out');
-  if (zoomOutBtn) zoomOutBtn.addEventListener('click', zoomOut);
-
-  const resetZoomBtn = document.getElementById('btn-reset-zoom');
-  if (resetZoomBtn) resetZoomBtn.addEventListener('click', resetZoom);
-
-  // Controlli Zoom Fluttuanti per Smartphone
-  const zoomInFloat = document.getElementById('btn-zoom-in-float');
-  if (zoomInFloat) zoomInFloat.addEventListener('click', zoomIn);
-
-  const zoomOutFloat = document.getElementById('btn-zoom-out-float');
-  if (zoomOutFloat) zoomOutFloat.addEventListener('click', zoomOut);
-
-  const resetZoomFloat = document.getElementById('btn-reset-zoom-float');
-  if (resetZoomFloat) resetZoomFloat.addEventListener('click', resetZoom);
+  // Pulsante Indice nella barra superiore: salta direttamente all'indice
+  const goIndexBtn = document.getElementById('btn-go-to-index');
+  if (goIndexBtn) {
+    goIndexBtn.addEventListener('click', () => {
+      if (!currentPdfDoc) return;
+      goToPage(detectedIndexPageNum);
+      showToast(`Passato all'indice (Pagina ${detectedIndexPageNum})`, 'info');
+    });
+  }
 
   // Ricalcola il fit-to-width del PDF se l'utente ruota il dispositivo (portrait / landscape)
   let resizeTimer = null;

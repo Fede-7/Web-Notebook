@@ -1,7 +1,7 @@
 /**
  * Service Worker per Note PDF PWA (v4)
  */
-const CACHE_NAME = 'notepdf-shell-v5';
+const CACHE_NAME = 'notepdf-shell-v7';
 
 const APP_SHELL_ASSETS = [
   './',

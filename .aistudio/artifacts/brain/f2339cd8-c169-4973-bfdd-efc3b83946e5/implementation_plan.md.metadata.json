@@ -1,0 +1,6 @@
+{
+  "summary": "Piano di riorganizzazione dei controlli del visualizzatore PDF:\n- Rimozione completa di tutti i pulsanti e controlli di zoom (zoom in, zoom out, adatta larghezza)\n- Spostamento della barra di paginazione (Precedente, indicatore pagina/totale, Successivo) in basso al centro in una comoda barra fluttuante ergonomica\n- Inserimento nella barra superiore del pulsante dedicato 'Indice' che salta direttamente alla pagina del sommario (pagina 2 o prima pagina dell'indice)\n- Pulizia della toolbar superiore con mantenimento del tasto Indietro, Titolo/Sottotitolo, tasto Indice e Modalità Notturna",
+  "updatedAt": "2026-10-17T10:10:15.327164547Z",
+  "requestFeedback": true,
+  "userFacing": true
+}

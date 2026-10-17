@@ -1059,7 +1059,7 @@ svg {
 .viewer-controls-group {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.375rem;
   flex-shrink: 0;
 }
 
@@ -1067,6 +1067,42 @@ svg {
   .viewer-controls-group {
     gap: 0.5rem;
   }
+}
+
+/* Pulsante Indice nella barra superiore */
+.btn-viewer-action {
+  min-height: 36px;
+  padding: 0 0.625rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.78125rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+@media (min-width: 640px) {
+  .btn-viewer-action {
+    min-height: 40px;
+    padding: 0 0.875rem;
+    font-size: 0.8125rem;
+    gap: 0.45rem;
+  }
+}
+
+.btn-viewer-action:hover {
+  background-color: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.btn-viewer-action:active {
+  transform: scale(0.96);
 }
 
 .viewer-btn-icon {
@@ -1112,110 +1148,92 @@ svg {
   }
 }
 
-.viewer-page-indicator {
-  display: flex;
+/* --------------------------------------------------------------------------
+   Barra di Paginazione Fluttuante in Basso (Avanti, Indietro, Numeri Pagina)
+   Sostituisce i vecchi controlli di zoom con una navigazione ergonomica al centro
+   -------------------------------------------------------------------------- */
+.viewer-bottom-pagination {
+  position: fixed;
+  bottom: 1.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 105;
+  display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: #e2e8f0;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-  padding: 0 0.25rem;
+  gap: 0.5rem;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 9999px;
+  padding: 0.375rem 0.625rem;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  user-select: none;
 }
 
-@media (min-width: 640px) {
-  .viewer-page-indicator {
-    font-size: 0.8125rem;
-    gap: 0.375rem;
-    padding: 0 0.5rem;
-  }
+.viewer-page-nav-btn {
+  min-width: 38px;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.viewer-page-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.viewer-page-nav-btn:active {
+  transform: scale(0.92);
+}
+
+.viewer-page-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.viewer-page-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #f8fafc;
+  font-variant-numeric: tabular-nums;
+  padding: 0 0.375rem;
+}
+
+.page-separator {
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .page-input {
-  width: 36px;
-  height: 28px;
+  width: 44px;
+  height: 32px;
   text-align: center;
-  background-color: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background-color: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   color: #ffffff;
-  border-radius: 6px;
-  font-size: 0.75rem;
-}
-
-@media (min-width: 640px) {
-  .page-input {
-    width: 44px;
-    height: 32px;
-    font-size: 0.8125rem;
-  }
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.8125rem;
 }
 
 .page-input:focus {
   outline: none;
   border-color: var(--accent-primary);
+  background-color: rgba(255, 255, 255, 0.25);
 }
 
-/* Gruppo controlli zoom nella toolbar: nascosto su smartphone, visibile da tablet in su */
-.viewer-zoom-group {
-  display: none;
-  align-items: center;
-  gap: 0.375rem;
-}
-
-@media (min-width: 640px) {
-  .viewer-zoom-group {
-    display: flex;
-  }
-}
-
-/* Floating Zoom Bar per Smartphone (visibile solo sotto 640px) */
-.viewer-floating-zoom {
-  position: absolute;
-  bottom: 1.25rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 105;
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  background: rgba(15, 23, 42, 0.88);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 9999px;
-  padding: 0.375rem 0.5rem;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
-}
-
-@media (min-width: 640px) {
-  .viewer-floating-zoom {
-    display: none;
-  }
-}
-
-.viewer-fab-btn {
-  background: rgba(255, 255, 255, 0.12);
-  border: none;
-  color: #ffffff;
-  font-weight: 600;
-  font-size: 0.875rem;
-  height: 36px;
-  min-width: 36px;
-  padding: 0 0.625rem;
-  border-radius: 9999px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color 0.15s ease;
-}
-
-.viewer-fab-btn:active {
-  background: rgba(255, 255, 255, 0.25);
-}
-
-/* Area di rendering PDF */
+/* Area di rendering PDF (con padding inferiore per non coprire il testo con la paginazione) */
 .pdf-viewer-stage {
   flex: 1;
   overflow: auto;
@@ -1223,7 +1241,7 @@ svg {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 0.75rem 0.375rem 4rem;
+  padding: 0.75rem 0.375rem 5.5rem;
   gap: 1rem;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-x pan-y pinch-zoom;
@@ -1231,7 +1249,7 @@ svg {
 
 @media (min-width: 640px) {
   .pdf-viewer-stage {
-    padding: 1.5rem 1rem 3rem;
+    padding: 1.5rem 1rem 5.5rem;
     gap: 1.5rem;
   }
 }

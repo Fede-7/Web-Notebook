@@ -163,35 +163,20 @@
         </div>
       </div>
 
-      <!-- Controlli di Lettura: Paginazione, Zoom, Modalità Notturna -->
+      <!-- Controlli Superiori: Vai all'Indice & Modalità Notturna -->
       <div class="viewer-controls-group">
-        <!-- Paginazione -->
-        <button id="btn-prev-page" class="viewer-btn-icon" title="Pagina precedente (Freccia Sinistra)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        <!-- Pulsante rapido per saltare all'indice del documento -->
+        <button id="btn-go-to-index" class="btn-viewer-action" title="Vai all'indice del documento">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="8" y1="6" x2="21" y2="6"></line>
+            <line x1="8" y1="12" x2="21" y2="12"></line>
+            <line x1="8" y1="18" x2="21" y2="18"></line>
+            <line x1="3" y1="6" x2="3.01" y2="6"></line>
+            <line x1="3" y1="12" x2="3.01" y2="12"></line>
+            <line x1="3" y1="18" x2="3.01" y2="18"></line>
+          </svg>
+          <span>Indice</span>
         </button>
-
-        <div class="viewer-page-indicator">
-          <input type="number" id="page-input" class="page-input" min="1" value="1" aria-label="Numero pagina">
-          <span>/</span>
-          <span id="total-pages">1</span>
-        </div>
-
-        <button id="btn-next-page" class="viewer-btn-icon" title="Pagina successiva (Freccia Destra)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-        </button>
-
-        <!-- Zoom (visibile su tablet e desktop, nascosto nella barra su smartphone) -->
-        <div class="viewer-zoom-group">
-          <button id="btn-zoom-out" class="viewer-btn-icon" title="Rimpicciolisci">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
-          </button>
-          <button id="btn-reset-zoom" class="viewer-btn-icon" title="Adatta a larghezza">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
-          </button>
-          <button id="btn-zoom-in" class="viewer-btn-icon" title="Ingrandisci">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
-          </button>
-        </div>
 
         <!-- Modalità Notturna Lettura PDF -->
         <button id="btn-invert-pdf" class="viewer-btn-icon" title="Inverti colori PDF per lettura al buio">
@@ -208,12 +193,26 @@
       </div>
     </div>
 
-    <!-- Controlli Zoom Fluttuanti per Mobile (scompare su desktop) -->
-    <div class="viewer-floating-zoom" aria-label="Controlli zoom rapido">
-      <button id="btn-zoom-out-float" class="viewer-fab-btn" title="Rimpicciolisci">−</button>
-      <button id="btn-reset-zoom-float" class="viewer-fab-btn font-mono" title="Adatta a larghezza schermo">Adatta</button>
-      <button id="btn-zoom-in-float" class="viewer-fab-btn" title="Ingrandisci">+</button>
-    </div>
+    <!-- Barra di Paginazione Fluttuante in Basso (Avanti, Indietro, Numeri Pagina) -->
+    <nav id="viewer-bottom-pagination" class="viewer-bottom-pagination" aria-label="Navigazione pagine">
+      <button id="btn-prev-page" class="viewer-page-nav-btn" title="Pagina precedente (Freccia Sinistra)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+      </button>
+
+      <div class="viewer-page-indicator">
+        <input type="number" id="page-input" class="page-input" min="1" value="1" aria-label="Numero pagina">
+        <span class="page-separator">/</span>
+        <span id="total-pages">1</span>
+      </div>
+
+      <button id="btn-next-page" class="viewer-page-nav-btn" title="Pagina successiva (Freccia Destra)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+      </button>
+    </nav>
   </div>
 
   <!-- Contenitore Notifiche Toast -->
