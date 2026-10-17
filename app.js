@@ -602,9 +602,14 @@ function renderPdfList() {
               <span class="meta-separator">·</span>
               <span>${formatDate(card.updatedAt).split(',')[0]}</span>
             </div>
-            <span class="pdf-download">
-              Scarica
-            </span>
+            <button type="button" class="pdf-download" title="Scarica ${escapeHtml(card.fileName)}">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              <span>Scarica</span>
+            </button>
             <span class="pdf-card-action-hint">
               Leggi PDF
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -685,64 +690,148 @@ let currentZoom = 1.0;
 let isRenderingPage = false;
 let pageRenderingQueue = null;
 let isPdfInvertMode = false;
+let currentRenderTask = null;
+let currentLoadingTask = null;
 
 async function openPdfViewer(pdfItem) {
+  if (!pdfItem) return;
+
+  // Se c'è già una visualizzazione o rendering aperto, ripuliamo prima tutto lo stato
+  if (currentPdfDoc || isRenderingPage || currentLoadingTask) {
+    await closePdfViewer();
+  }
+
   const overlay = document.getElementById('pdf-viewer-overlay');
   const titleEl = document.getElementById('viewer-doc-title');
   const subtitleEl = document.getElementById('viewer-doc-subtitle');
   const loadingState = document.getElementById('viewer-loading');
 
-  if (!overlay || !pdfItem || !pdfItem.blob) return;
+  if (!overlay) return;
 
-  currentPdfItem = pdfItem;
+  // Recupera il blob aggiornato da IndexedDB se non presente nell'oggetto
+  let item = pdfItem;
+  if ((!item.blob || item.blob.size === 0) && item.path) {
+    try {
+      const fromDb = await dbGetPdf(item.path);
+      if (fromDb && fromDb.blob) {
+        item = fromDb;
+      }
+    } catch (e) {
+      console.warn('Impossibile recuperare PDF da db:', e);
+    }
+  }
+
+  if (!item.blob) {
+    showToast('File PDF non trovato in memoria locale. Prova a sincronizzare.', 'error');
+    return;
+  }
+
+  currentPdfItem = item;
   currentPageNum = 1;
   currentZoom = 1.0;
+  isRenderingPage = false;
+  pageRenderingQueue = null;
 
-  titleEl.textContent = pdfItem.parent;
-  subtitleEl.textContent = `${pdfItem.grandparent} · ${pdfItem.fileName}`;
+  if (titleEl) titleEl.textContent = item.parent || item.fileName || 'Documento PDF';
+  if (subtitleEl) subtitleEl.textContent = `${item.grandparent || ''} · ${item.fileName || ''}`;
 
   overlay.classList.remove('hidden');
-  loadingState.classList.remove('hidden');
+  if (loadingState) loadingState.classList.remove('hidden');
   document.body.style.overflow = 'hidden';
 
   try {
-    const arrayBuffer = await pdfItem.blob.arrayBuffer();
+    // Creiamo una copia pulita dell'ArrayBuffer dal Blob per prevenire distacchi (detached buffer)
+    const arrayBuffer = await item.blob.arrayBuffer();
+    const dataCopy = new Uint8Array(arrayBuffer.slice(0));
 
     if (!window.pdfjsLib) {
       throw new Error('Libreria PDF.js in caricamento o non disponibile.');
     }
 
-    const loadingTask = window.pdfjsLib.getDocument({ data: arrayBuffer });
-    currentPdfDoc = await loadingTask.promise;
+    currentLoadingTask = window.pdfjsLib.getDocument({ data: dataCopy });
+    currentPdfDoc = await currentLoadingTask.promise;
+    currentLoadingTask = null;
 
-    document.getElementById('total-pages').textContent = currentPdfDoc.numPages;
-    document.getElementById('page-input').max = currentPdfDoc.numPages;
-    document.getElementById('page-input').value = '1';
+    const totalPagesEl = document.getElementById('total-pages');
+    if (totalPagesEl) totalPagesEl.textContent = currentPdfDoc.numPages;
 
-    renderCurrentPage();
+    const pageInput = document.getElementById('page-input');
+    if (pageInput) {
+      pageInput.max = currentPdfDoc.numPages;
+      pageInput.value = '1';
+    }
+
+    await renderCurrentPage();
   } catch (err) {
+    if (err && err.name === 'RenderingCancelledException') {
+      return;
+    }
     console.error('Errore visualizzazione PDF:', err);
     showToast('Impossibile visualizzare il PDF: ' + err.message, 'error');
-    closePdfViewer();
+    await closePdfViewer();
   } finally {
-    loadingState.classList.add('hidden');
+    if (loadingState) loadingState.classList.add('hidden');
   }
 }
 
-function closePdfViewer() {
+async function closePdfViewer() {
+  // 1. Annulla qualsiasi rendering della pagina in corso
+  if (currentRenderTask) {
+    try {
+      currentRenderTask.cancel();
+    } catch (e) {}
+    currentRenderTask = null;
+  }
+
+  // 2. Annulla qualsiasi caricamento PDF in corso
+  if (currentLoadingTask) {
+    try {
+      currentLoadingTask.destroy();
+    } catch (e) {}
+    currentLoadingTask = null;
+  }
+
+  // 3. Distruggi il documento PDF corrente per liberare la memoria del Web Worker
+  if (currentPdfDoc) {
+    try {
+      await currentPdfDoc.destroy();
+    } catch (e) {}
+    currentPdfDoc = null;
+  }
+
+  // 4. Resetta tutti i flag di controllo
+  isRenderingPage = false;
+  pageRenderingQueue = null;
+  currentPdfItem = null;
+  currentPageNum = 1;
+
+  // 5. Chiudi l'overlay e ripristina la schermata principale
   const overlay = document.getElementById('pdf-viewer-overlay');
   if (overlay) overlay.classList.add('hidden');
+
+  const loadingState = document.getElementById('viewer-loading');
+  if (loadingState) loadingState.classList.add('hidden');
+
   document.body.style.overflow = '';
-  currentPdfDoc = null;
-  currentPdfItem = null;
+
   const stage = document.getElementById('pdf-viewer-stage');
   if (stage) stage.innerHTML = '';
 }
 
 async function renderCurrentPage() {
-  if (!currentPdfDoc) return;
+  if (!currentPdfDoc) {
+    isRenderingPage = false;
+    return;
+  }
+
+  // Se c'è già un rendering in corso, accoda la pagina richiesta
   if (isRenderingPage) {
     pageRenderingQueue = currentPageNum;
+    if (currentRenderTask) {
+      try {
+        currentRenderTask.cancel();
+      } catch (e) {}
+    }
     return;
   }
 
@@ -797,8 +886,14 @@ async function renderCurrentPage() {
       viewport: viewport,
     };
 
-    await page.render(renderContext).promise;
+    currentRenderTask = page.render(renderContext);
+    await currentRenderTask.promise;
+    currentRenderTask = null;
   } catch (renderError) {
+    if (renderError && (renderError.name === 'RenderingCancelledException' || renderError.message?.includes('cancelled'))) {
+      // Normale annullamento per cambio pagina rapido o chiusura
+      return;
+    }
     console.error('Errore rendering pagina:', renderError);
   } finally {
     isRenderingPage = false;
