@@ -258,7 +258,12 @@ async function syncFromGitHub(options = { isManual: true }) {
     const savedETag = localStorage.getItem(window.APP_CONFIG.STORAGE_KEY_ETAG) || '';
     const headers = {};
 
-    if (savedETag) {
+    // L'ETag ("nessuna modifica dalla volta scorsa") è affidabile SOLO se
+    // la memoria locale contiene già dei PDF. Su un dispositivo nuovo o con
+    // la cache svuotata va ignorato, altrimenti l'app dice "già aggiornato"
+    // senza aver mai scaricato nulla.
+    const localPdfs = await dbGetAllPdfs();
+    if (savedETag && localPdfs.length > 0) {
       headers['If-None-Match'] = savedETag;
     }
 
@@ -284,7 +289,8 @@ async function syncFromGitHub(options = { isManual: true }) {
       throw new Error('Nessuna connessione a Internet. Stai usando i file PDF memorizzati offline.');
     }
 
-    // 304 Not Modified: Nessuna modifica, esce subito senza riscaricare
+    // 304 Not Modified: nessuna modifica dall'ultima sincronizzazione.
+    // Aggiorna comunque la UI (rendering delle card) invece di uscire di netto.
     if (response.status === 304) {
       const now = Date.now();
       localStorage.setItem(window.APP_CONFIG.STORAGE_KEY_LAST_SYNC, now.toString());
@@ -293,6 +299,7 @@ async function syncFromGitHub(options = { isManual: true }) {
       showToast('Già aggiornato: nessuna modifica nella repository', 'info');
       setProgress(100, 'Già aggiornato');
       setTimeout(() => progressBar && progressBar.classList.add('hidden'), 800);
+      await refreshUI();
       return;
     }
 
@@ -325,6 +332,11 @@ async function syncFromGitHub(options = { isManual: true }) {
     const data = await response.json();
     if (!data.tree || !Array.isArray(data.tree)) {
       throw new Error('Formato risposta Git Trees non valido.');
+    }
+
+    // Repo molto grandi: GitHub può troncare l'elenco dei file.
+    if (data.truncated) {
+      showToast('Attenzione: repository molto grande, l\'elenco file potrebbe essere incompleto.', 'info');
     }
 
     // Filtra e analizza i file PDF
@@ -365,6 +377,13 @@ async function syncFromGitHub(options = { isManual: true }) {
       if (!cached || cached.sha !== item.sha || !cached.blob) {
         toDownload.push(item);
       }
+    }
+
+    // Nessun PDF trovato nella repo con queste impostazioni: non dire "aggiornato"
+    if (validPdfTreeItems.length === 0 && existingPdfs.length === 0) {
+      const msg = `Nessun PDF trovato in ${config.owner}/${config.repo} (ramo ${config.branch}${config.rootPath ? ', cartella ' + config.rootPath : ''}). Controlla percorso e cartelle escluse nelle impostazioni.`;
+      showToast(msg, 'error');
+      throw new Error(msg);
     }
 
     if (toDownload.length === 0 && deletedCount === 0) {
