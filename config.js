@@ -3,11 +3,13 @@
  * I valori di default possono essere caricati in modo sicuro dal file .env del server,
  * oppure sovrascritti localmente per test.
  */
-let DEFAULT_OWNER = 'federicodellini';
-let DEFAULT_REPO = 'obsidian-notes';
+let DEFAULT_OWNER = 'Fede-7';
+let DEFAULT_REPO = 'Notes';
 let DEFAULT_BRANCH = 'main';
 let DEFAULT_ROOT_PATH = '00 - Obsidian Notes';
 let DEFAULT_EXCLUDE_DIRS = ['assets', 'asset', 'Wait', 'Spunto', 'Essenziale'];
+
+let DEFAULT_DRIVE_FOLDER_ID = '1k77YG_N_xwMctML4d-aV2PfuyIY-ECKS';
 
 // Chiavi localStorage
 const STORAGE_KEY_CONFIG = 'notepdf_user_config';
@@ -16,6 +18,11 @@ const STORAGE_KEY_THEME = 'notepdf_theme';
 const STORAGE_KEY_ETAG = 'notepdf_github_etag';
 const STORAGE_KEY_LAST_SYNC = 'notepdf_last_sync_date';
 const STORAGE_KEY_LAST_STATUS = 'notepdf_last_sync_status';
+const STORAGE_KEY_DRIVE_CACHE = 'notepdf_drive_tree_cache';
+const STORAGE_KEY_DRIVE_LAST_SYNC = 'notepdf_drive_last_sync';
+const STORAGE_KEY_ACTIVE_TAB = 'notepdf_active_tab';
+const STORAGE_KEY_DRIVE_DEFAULT_PATH = 'notepdf_drive_default_path';
+const STORAGE_KEY_DRIVE_CURRENT_PATH = 'notepdf_drive_current_path';
 
 // Stato del server
 let serverConfigLoaded = false;
@@ -35,6 +42,7 @@ async function loadServerConfig() {
       if (data.branch) DEFAULT_BRANCH = data.branch;
       if (data.rootPath !== undefined) DEFAULT_ROOT_PATH = data.rootPath;
       if (Array.isArray(data.excludeDirs)) DEFAULT_EXCLUDE_DIRS = data.excludeDirs;
+      if (data.driveFolderId) DEFAULT_DRIVE_FOLDER_ID = data.driveFolderId;
       hasServerToken = Boolean(data.hasToken);
       isServerMode = true;
       serverConfigLoaded = true;
@@ -57,6 +65,11 @@ function getAppConfig() {
     const raw = localStorage.getItem(STORAGE_KEY_CONFIG);
     if (raw) {
       userConfig = JSON.parse(raw);
+      // Pulisce vecchi default non più validi se presenti nel browser
+      if (userConfig.owner === 'federicodellini' || userConfig.repo === 'obsidian-notes') {
+        localStorage.removeItem(STORAGE_KEY_CONFIG);
+        userConfig = {};
+      }
     }
   } catch (e) {
     console.warn('Errore lettura configurazione locale:', e);
@@ -127,6 +140,7 @@ window.APP_CONFIG = {
   get DEFAULT_BRANCH() { return DEFAULT_BRANCH; },
   get DEFAULT_ROOT_PATH() { return DEFAULT_ROOT_PATH; },
   get DEFAULT_EXCLUDE_DIRS() { return DEFAULT_EXCLUDE_DIRS; },
+  get DEFAULT_DRIVE_FOLDER_ID() { return DEFAULT_DRIVE_FOLDER_ID; },
   get hasServerToken() { return hasServerToken; },
   get isServerMode() { return isServerMode; },
   STORAGE_KEY_CONFIG,
@@ -135,6 +149,11 @@ window.APP_CONFIG = {
   STORAGE_KEY_ETAG,
   STORAGE_KEY_LAST_SYNC,
   STORAGE_KEY_LAST_STATUS,
+  STORAGE_KEY_DRIVE_CACHE,
+  STORAGE_KEY_DRIVE_LAST_SYNC,
+  STORAGE_KEY_ACTIVE_TAB,
+  STORAGE_KEY_DRIVE_DEFAULT_PATH,
+  STORAGE_KEY_DRIVE_CURRENT_PATH,
   loadServerConfig,
   getAppConfig,
   saveAppConfig,

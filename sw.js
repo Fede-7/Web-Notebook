@@ -6,7 +6,7 @@
  * - Immagini, font, PDF.js: Cache-First con fallback su network
  */
 
-const CACHE_NAME = 'notepdf-shell-v7';
+const CACHE_NAME = 'notepdf-shell-v8';
 
 const APP_SHELL_ASSETS = [
   './',

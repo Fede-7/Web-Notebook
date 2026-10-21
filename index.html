@@ -55,14 +55,24 @@
           <span class="btn-text">Installa App</span>
         </button>
 
-        <!-- Pulsante Aggiorna da GitHub -->
-        <button id="btn-sync" class="btn-primary" title="Sincronizza modifiche da GitHub (ETag)">
+        <!-- Pulsante Aggiorna da GitHub (per sezione PDF) -->
+        <button id="btn-sync" class="btn-primary" title="Sincronizza dispense PDF da GitHub">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10"></polyline>
             <polyline points="1 20 1 14 7 14"></polyline>
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
           </svg>
           <span class="btn-text">Aggiorna</span>
+        </button>
+
+        <!-- Pulsante Aggiorna da Google Drive (per sezione Registrazioni) -->
+        <button id="btn-drive-sync-top" class="btn-primary hidden" title="Sincronizza registrazioni da Google Drive">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+          <span class="btn-text">Aggiorna Drive</span>
         </button>
 
         <!-- Toggle Tema Giorno / Notte -->
@@ -82,6 +92,31 @@
       </nav>
     </header>
 
+    <!-- Barra Switcher Sezioni (Dispense PDF vs Registrazioni) -->
+    <nav class="app-tabs-bar" role="tablist" aria-label="Sezioni applicazione">
+      <button id="tab-btn-pdfs" class="tab-btn active" role="tab" aria-selected="true" aria-controls="section-pdfs">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+        </svg>
+        <span>Dispense PDF</span>
+        <span id="badge-pdf-count" class="tab-badge">0</span>
+      </button>
+
+      <button id="tab-btn-recordings" class="tab-btn" role="tab" aria-selected="false" aria-controls="section-recordings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+          <line x1="12" y1="19" x2="12" y2="23"></line>
+          <line x1="8" y1="23" x2="16" y2="23"></line>
+        </svg>
+        <span>Registrazioni</span>
+        <span id="badge-recordings-count" class="tab-badge tab-badge-accent">3° Anno</span>
+      </button>
+    </nav>
+
     <!-- Barra Avanzamento Sincronizzazione -->
     <div id="sync-progress-banner" class="sync-progress-banner hidden" role="region" aria-label="Progresso sincronizzazione">
       <div class="progress-header">
@@ -92,56 +127,180 @@
       </div>
     </div>
 
-    <!-- Sotto-barra: Stato Ultima Sincronizzazione e Ricerca Rapida -->
-    <div class="sub-bar">
-      <div class="sync-meta-info">
-        <span id="status-dot" class="status-dot" title="Online"></span>
-        <span id="sync-meta-text">Nessuna sincronizzazione effettuata</span>
-      </div>
+    <!-- ====================================================================
+         SEZIONE 1: DISPENSE PDF (GitHub Offline Reader)
+         ==================================================================== -->
+    <section id="section-pdfs" class="app-section" role="tabpanel" aria-labelledby="tab-btn-pdfs">
+      <!-- Sotto-barra: Stato Ultima Sincronizzazione e Ricerca Rapida -->
+      <div class="sub-bar">
+        <div class="sync-meta-info">
+          <span id="status-dot" class="status-dot" title="Online"></span>
+          <span id="sync-meta-text">Nessuna sincronizzazione effettuata</span>
+        </div>
 
-      <div class="search-box">
-        <svg class="search-icon" width="18" height="18" style="width: 18px; height: 18px; max-width: 18px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8"></circle>
-          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-        </svg>
-        <input type="text" id="search-input" class="search-input" placeholder="Cerca materia o semestre..." aria-label="Cerca materia o semestre">
-        <button id="search-clear" class="search-clear" aria-label="Cancella testo di ricerca">✕</button>
-      </div>
-    </div>
-
-    <!-- Contenuto Principale: Box e Card dei PDF -->
-    <main class="main-content">
-      <div id="pdf-groups-container"></div>
-
-      <!-- Stato Vuoto (Empty State) -->
-      <div id="empty-state" class="empty-state">
-        <div class="empty-state-icon" aria-hidden="true">
-          <svg width="32" height="32" style="width: 32px; height: 32px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-            <polyline points="14 2 14 8 20 8"></polyline>
-            <line x1="12" y1="18" x2="12" y2="12"></line>
-            <line x1="9" y1="15" x2="15" y2="15"></line>
+        <div class="search-box">
+          <svg class="search-icon" width="18" height="18" style="width: 18px; height: 18px; max-width: 18px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
           </svg>
-        </div>
-        <h2 id="empty-state-title" class="empty-state-title">Nessun PDF scaricato</h2>
-        <p id="empty-state-desc" class="empty-state-desc">
-          Premi <strong>Aggiorna</strong> per scansionare la repository GitHub e scaricare i PDF sul tuo dispositivo per la lettura offline, oppure prova subito con i dati di esempio.
-        </p>
-        <div class="empty-state-actions">
-          <button id="btn-empty-sync" class="btn-primary">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <polyline points="23 4 23 10 17 10"></polyline>
-              <polyline points="1 20 1 14 7 14"></polyline>
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-            </svg>
-            <span>Aggiorna da GitHub</span>
-          </button>
-          <button id="btn-empty-demo" class="btn-secondary">
-            Carica note di esempio (Demo)
-          </button>
+          <input type="text" id="search-input" class="search-input" placeholder="Cerca materia o semestre..." aria-label="Cerca materia o semestre">
+          <button id="search-clear" class="search-clear" aria-label="Cancella testo di ricerca">✕</button>
         </div>
       </div>
-    </main>
+
+      <!-- Contenuto Principale: Box e Card dei PDF -->
+      <main class="main-content">
+        <div id="pdf-groups-container"></div>
+
+        <!-- Stato Vuoto (Empty State) -->
+        <div id="empty-state" class="empty-state">
+          <div class="empty-state-icon" aria-hidden="true">
+            <svg width="32" height="32" style="width: 32px; height: 32px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="12" y1="18" x2="12" y2="12"></line>
+              <line x1="9" y1="15" x2="15" y2="15"></line>
+            </svg>
+          </div>
+          <h2 id="empty-state-title" class="empty-state-title">Nessun PDF scaricato</h2>
+          <p id="empty-state-desc" class="empty-state-desc">
+            Premi <strong>Aggiorna</strong> per scansionare la repository GitHub e scaricare i PDF sul tuo dispositivo per la lettura offline, oppure prova subito con i dati di esempio.
+          </p>
+          <div class="empty-state-actions">
+            <button id="btn-empty-sync" class="btn-primary">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+              <span>Aggiorna da GitHub</span>
+            </button>
+            <button id="btn-empty-demo" class="btn-secondary">
+              Carica note di esempio (Demo)
+            </button>
+          </div>
+        </div>
+      </main>
+    </section>
+
+    <!-- ====================================================================
+         SEZIONE 2: REGISTRAZIONI AUDIO LEZIONI (Google Drive)
+         ==================================================================== -->
+    <section id="section-recordings" class="app-section hidden" role="tabpanel" aria-labelledby="tab-btn-recordings">
+      <!-- Sotto-barra Registrazioni: Info Drive, Ricarica, Ricerca -->
+      <div class="sub-bar">
+        <div class="sync-meta-info">
+          <span id="drive-status-dot" class="status-dot status-dot-drive" title="Google Drive"></span>
+          <span id="drive-meta-text">Google Drive: 3° ANNO</span>
+        </div>
+
+        <div class="search-box">
+          <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="drive-search-input" class="search-input" placeholder="Cerca lezione o registrazione..." aria-label="Cerca lezione o registrazione">
+          <button id="drive-search-clear" class="search-clear" aria-label="Cancella testo di ricerca">✕</button>
+        </div>
+      </div>
+
+      <!-- Barra Breadcrumb Gerarchica (Anno > Semestre > Materia > Lezione) -->
+      <div id="drive-breadcrumbs-bar" class="drive-breadcrumbs-bar">
+        <nav class="drive-breadcrumbs" id="drive-breadcrumbs" aria-label="Percorso cartelle">
+          <!-- Generato dinamicamente -->
+        </nav>
+        <button id="btn-drive-refresh" class="btn-secondary btn-sm" title="Aggiorna da Google Drive">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+          <span>Sincronizza Drive</span>
+        </button>
+      </div>
+
+      <!-- Contenitore Principale Navigazione Ricorsiva Google Drive -->
+      <main class="main-content">
+        <!-- Spinner di caricamento Drive -->
+        <div id="drive-loading-state" class="drive-loading-state hidden">
+          <div class="spinner"></div>
+          <p id="drive-loading-text">Scansione ricorsiva di Google Drive in corso...</p>
+        </div>
+
+        <!-- Vista Albero/Livello Corrente -->
+        <div id="drive-tree-view" class="drive-tree-view"></div>
+
+        <!-- Stato Vuoto Registrazioni Drive -->
+        <div id="drive-empty-state" class="empty-state hidden">
+          <div class="empty-state-icon" aria-hidden="true">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+              <line x1="12" y1="19" x2="12" y2="23"></line>
+              <line x1="8" y1="23" x2="16" y2="23"></line>
+            </svg>
+          </div>
+          <h2 id="drive-empty-title" class="empty-state-title">Nessuna registrazione trovata</h2>
+          <p id="drive-empty-desc" class="empty-state-desc">
+            La cartella collegata su Google Drive (<strong>3° ANNO / 1° Semestre / IngSw</strong>) non contiene ancora file audio caricati.
+            Puoi ricaricare la scansione live oppure esplorare subito con le lezioni demo di prova.
+          </p>
+          <div class="empty-state-actions">
+            <button id="btn-drive-empty-refresh" class="btn-primary">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+              <span>Aggiorna da Drive</span>
+            </button>
+            <button id="btn-drive-empty-demo" class="btn-secondary">
+              Carica lezioni demo di IngSw
+            </button>
+          </div>
+        </div>
+      </main>
+
+      <!-- Barra Azioni Fluttuante Selezione Multipla (Download Multiplo) -->
+      <aside id="recordings-batch-bar" class="recordings-batch-bar hidden" aria-label="Azioni selezione multipla">
+        <div class="batch-bar-content">
+          <div class="batch-selection-info">
+            <span id="batch-selected-count" class="batch-count-badge">0</span>
+            <span class="batch-count-label">registrazioni selezionate</span>
+          </div>
+
+          <div class="batch-actions-buttons">
+            <button id="btn-batch-select-all" class="btn-secondary btn-sm" title="Seleziona tutte le registrazioni di questa lezione">
+              Seleziona Tutte
+            </button>
+            <button id="btn-batch-clear" class="btn-secondary btn-sm" title="Deseleziona tutto">
+              Annulla
+            </button>
+            <button id="btn-batch-download" class="btn-primary btn-sm" title="Scarica tutte le registrazioni selezionate">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              <span id="btn-batch-download-text">Scarica Selezionate (0)</span>
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Mini Player Audio di Anteprima Fluttuante -->
+      <div id="audio-player-bar" class="audio-player-bar hidden" role="region" aria-label="Lettore anteprima audio">
+        <div class="audio-player-track-info">
+          <span class="audio-pulse-indicator"></span>
+          <div class="audio-track-details">
+            <div id="audio-player-title" class="audio-player-title">Titolo Registrazione</div>
+            <div id="audio-player-subtitle" class="audio-player-subtitle">Lezione / Materia</div>
+          </div>
+        </div>
+        <audio id="global-audio-element" controls preload="none" class="native-audio-player"></audio>
+        <button id="btn-audio-player-close" class="btn-icon btn-sm" title="Chiudi lettore audio">✕</button>
+      </div>
+    </section>
   </div>
 
   <!-- VISUALIZZATORE PDF A SCHERMO INTERO (PDF.js) -->
