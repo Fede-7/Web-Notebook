@@ -669,7 +669,7 @@ function renderPdfList() {
 
   for (const group of sortedGroups) {
     const sortedCards = group.items.sort((a, b) => {
-      return collator.compare(a.parent, b.parent);
+      return compareDescending(a, b);
     });
 
     html += `
@@ -1605,7 +1605,49 @@ function cleanDriveItemName(raw, isFolder = false) {
 }
 
 /**
+ * Confronta due file o elementi in ordine decrescente (più recente in cima)
+ * Riconosce date ISO (es. 2026-09-15 10 37 17 o YYYY-MM-DD), timestamp o ordinamento naturale
+ */
+function compareDescending(a, b) {
+  const nameA = (a && (a.name || a.fileName || a.parent)) || '';
+  const nameB = (b && (b.name || b.fileName || b.parent)) || '';
+
+  // 1. Cerca pattern di data/orario nel nome del file (es. 2026-09-15 10 37 17 o 2026-10-22)
+  const dateRegex = /(\d{4})[-_.](\d{2})[-_.](\d{2})(?:[ T_](\d{2})[-_.:](\d{2})(?:[-_.:](\d{2}))?)?/;
+  const matchA = nameA.match(dateRegex);
+  const matchB = nameB.match(dateRegex);
+
+  if (matchA && matchB) {
+    const keyA = `${matchA[1]}-${matchA[2]}-${matchA[3]} ${matchA[4] || '00'}:${matchA[5] || '00'}:${matchA[6] || '00'}`;
+    const keyB = `${matchB[1]}-${matchB[2]}-${matchB[3]} ${matchB[4] || '00'}:${matchB[5] || '00'}:${matchB[6] || '00'}`;
+    if (keyA !== keyB) {
+      // Ordine DECRESCENTE: il più recente (B) prima del più vecchio (A)
+      return keyB.localeCompare(keyA);
+    }
+  } else if (matchA && !matchB) {
+    return -1;
+  } else if (!matchA && matchB) {
+    return 1;
+  }
+
+  // 2. Controllo se presente campo modifiedTime / updatedAt
+  const timeA = (a && (a.modifiedTime || a.updatedAt || a.modified)) || 0;
+  const timeB = (b && (b.modifiedTime || b.updatedAt || b.modified)) || 0;
+  if (timeA && timeB && timeA !== timeB) {
+    const msA = new Date(timeA).getTime();
+    const msB = new Date(timeB).getTime();
+    if (!isNaN(msA) && !isNaN(msB) && msA !== msB) {
+      return msB - msA;
+    }
+  }
+
+  // 3. Fallback: Ordinamento alfanumerico naturale decrescente
+  return nameB.localeCompare(nameA, undefined, { numeric: true, sensitivity: 'base' });
+}
+
+/**
  * Pulisce ricorsivamente tutti i nomi dei nodi e dei file nell'albero di Google Drive
+ * e ordina i file in ORDINE DECRESCENTE (dal più recente in cima)
  */
 function sanitizeDriveTreeNames(node) {
   if (!node) return;
@@ -1616,6 +1658,8 @@ function sanitizeDriveTreeNames(node) {
     node.files.forEach(f => {
       f.name = cleanDriveItemName(f.name, false);
     });
+    // Ordina in ordine decrescente in modo che il file più recente sia in cima
+    node.files.sort((a, b) => compareDescending(a, b));
   }
   if (Array.isArray(node.folders)) {
     node.folders.forEach(sub => sanitizeDriveTreeNames(sub));
@@ -1750,6 +1794,23 @@ function loadDemoRecordingsData() {
           mimeType: 'audio/mp4',
           size: '31.2 MB',
           duration: '52:40',
+          isDemo: true,
+        },
+        {
+          id: 'demo-rec-1-3',
+          name: 'Videoregistrazione_Lezione_01_Agile.mp4',
+          isFolder: false,
+          mimeType: 'video/mp4',
+          size: '185.0 MB',
+          duration: '1:40:55',
+          isDemo: true,
+        },
+        {
+          id: 'demo-rec-1-4',
+          name: 'Dispensa_Lezione_01_Appunti.pdf',
+          isFolder: false,
+          mimeType: 'application/pdf',
+          size: '4.2 MB',
           isDemo: true,
         },
       ],
@@ -2052,9 +2113,11 @@ function renderDriveView() {
 
   const currentLevelDepth = drivePathStack.length; // 0 = Root (3° ANNO), 1 = Semestre, 2 = Materia (IngSw), 3 = Lezione
 
-  // Raccoglie sottocartelle e file del livello corrente filtrati dalla ricerca
+  // Raccoglie sottocartelle e file del livello corrente filtrati dalla ricerca e ordinati in modo decrescente
   const folders = (currentNode.folders || []).filter(f => !searchQuery || f.name.toLowerCase().includes(searchQuery));
-  const files = (currentNode.files || []).filter(f => !searchQuery || f.name.toLowerCase().includes(searchQuery));
+  const files = (currentNode.files || [])
+    .filter(f => !searchQuery || f.name.toLowerCase().includes(searchQuery))
+    .sort((a, b) => compareDescending(a, b));
 
   // Verifica se la cartella è vuota
   const isEmpty = folders.length === 0 && files.length === 0;
@@ -2374,6 +2437,8 @@ function renderLessonsLevel(container, subjectNode, lessonFolders, directFiles) 
 
   // CASO 1: La cartella contiene direttamente file audio (es. IngSw con 13 file audio)
   if (lessonFolders.length === 0 && directFiles && directFiles.length > 0) {
+    const sortedDirectFiles = (directFiles || []).slice().sort((a, b) => compareDescending(a, b));
+
     const directContainer = document.createElement('div');
     directContainer.className = 'lesson-card expanded';
     directContainer.style.overflow = 'hidden';
@@ -2384,9 +2449,9 @@ function renderLessonsLevel(container, subjectNode, lessonFolders, directFiles) 
     const toolbar = document.createElement('div');
     toolbar.className = 'lesson-toolbar';
     toolbar.innerHTML = `
-      <span>Tutte le registrazioni (${directFiles.length})</span>
+      <span>Tutte le registrazioni (${sortedDirectFiles.length})</span>
       <button class="lesson-select-all-btn" type="button">
-        Seleziona tutte (${directFiles.length})
+        Seleziona tutte (${sortedDirectFiles.length})
       </button>
     `;
 
@@ -2394,12 +2459,12 @@ function renderLessonsLevel(container, subjectNode, lessonFolders, directFiles) 
     if (selectAllBtn) {
       selectAllBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const allSelected = directFiles.every(r => selectedRecordings.has(r.id));
+        const allSelected = sortedDirectFiles.every(r => selectedRecordings.has(r.id));
         if (allSelected) {
-          directFiles.forEach(r => selectedRecordings.delete(r.id));
-          selectAllBtn.textContent = `Seleziona tutte (${directFiles.length})`;
+          sortedDirectFiles.forEach(r => selectedRecordings.delete(r.id));
+          selectAllBtn.textContent = `Seleziona tutte (${sortedDirectFiles.length})`;
         } else {
-          directFiles.forEach(r => selectedRecordings.set(r.id, r));
+          sortedDirectFiles.forEach(r => selectedRecordings.set(r.id, r));
           selectAllBtn.textContent = 'Deseleziona tutte';
         }
         updateBatchBarUI();
@@ -2408,7 +2473,7 @@ function renderLessonsLevel(container, subjectNode, lessonFolders, directFiles) 
     }
     cardBody.appendChild(toolbar);
 
-    directFiles.forEach(rec => {
+    sortedDirectFiles.forEach(rec => {
       const itemRow = createRecordingItemElement(rec, subjectNode.name);
       cardBody.appendChild(itemRow);
     });
@@ -2425,7 +2490,8 @@ function renderLessonsLevel(container, subjectNode, lessonFolders, directFiles) 
   lessonsList.style.gap = '0.875rem';
 
   lessonFolders.forEach((lesson, index) => {
-    const recordings = lesson.files || [];
+    // Ordina i file di ciascuna lezione in ordine decrescente (dal più recente in cima)
+    const recordings = (lesson.files || []).slice().sort((a, b) => compareDescending(a, b));
     const isExpanded = expandedLessons.has(lesson.id) || index === 0;
 
     const card = document.createElement('div');
@@ -2527,9 +2593,10 @@ function renderLessonsLevel(container, subjectNode, lessonFolders, directFiles) 
 
 
 /**
- * Renderizza una sezione per file diretti (non all'interno di una sottocartella)
+ * Renderizza una sezione per file diretti (non all'interno di una sottocartella), ordinati in modo decrescente
  */
 function renderFilesSection(container, files, contextName) {
+  const sortedFiles = (files || []).slice().sort((a, b) => compareDescending(a, b));
   const header = document.createElement('div');
   header.className = 'drive-level-header';
   header.style.marginTop = '1.5rem';
@@ -2537,12 +2604,12 @@ function renderFilesSection(container, files, contextName) {
     <div class="drive-level-title">
       <span>File Diretti</span>
     </div>
-    <div class="drive-level-count">${files.length} file</div>
+    <div class="drive-level-count">${sortedFiles.length} file</div>
   `;
   container.appendChild(header);
 
   const list = document.createElement('div');
-  files.forEach(file => {
+  sortedFiles.forEach(file => {
     list.appendChild(createRecordingItemElement(file, contextName));
   });
   container.appendChild(list);
@@ -2556,13 +2623,82 @@ function createRecordingItemElement(rec, lessonName) {
   const cleanName = cleanDriveItemName(rec.name, false);
   rec.name = cleanName;
 
-  // Estrae l'estensione pulita (es. 'mp3', 'm4a', 'wav')
+  // Estrae l'estensione pulita (es. 'mp3', 'm4a', 'wav', 'pdf', 'mp4')
   let ext = 'mp3';
   if (cleanName.includes('.')) {
     const parts = cleanName.split('.');
     ext = parts[parts.length - 1].toLowerCase().replace(/[^a-z0-9]/g, '');
   }
   if (!ext || ext.length > 5) ext = 'mp3';
+
+  const isPdf = ext === 'pdf';
+  const isVideo = ['mp4', 'mkv', 'mov', 'avi', 'webm'].includes(ext);
+  const isAudio = !isPdf && !isVideo;
+
+  let iconClass = 'recording-audio-icon type-audio';
+  let tagClass = 'recording-tag tag-audio';
+  let primaryBtnLabel = 'Ascolta';
+  let primaryBtnTitle = 'Ascolta anteprima audio';
+  let primaryBtnIcon = `
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+      <polygon points="5 3 19 12 5 21 5 3"></polygon>
+    </svg>
+  `;
+  let iconSvg = '';
+
+  if (isPdf) {
+    iconClass = 'recording-audio-icon type-pdf';
+    tagClass = 'recording-tag tag-pdf';
+    primaryBtnLabel = 'Leggi PDF';
+    primaryBtnTitle = 'Apri e leggi documento PDF nel visualizzatore integrato';
+    primaryBtnIcon = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+      </svg>
+    `;
+    // Icona PDF coerente con la sezione Dispense (documento con righe)
+    iconSvg = `
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+        <polyline points="14 2 14 8 20 8"></polyline>
+        <line x1="16" y1="13" x2="8" y2="13"></line>
+        <line x1="16" y1="17" x2="8" y2="17"></line>
+        <polyline points="10 9 9 9 8 9"></polyline>
+      </svg>
+    `;
+  } else if (isVideo) {
+    iconClass = 'recording-audio-icon type-video';
+    tagClass = 'recording-tag tag-video';
+    primaryBtnLabel = 'Guarda';
+    primaryBtnTitle = 'Riproduci video';
+    primaryBtnIcon = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+      </svg>
+    `;
+    // Icona Video coerente per file .mp4
+    iconSvg = `
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="4" width="15" height="16" rx="2" ry="2"></rect>
+        <polygon points="17 9 22 6 22 18 17 15"></polygon>
+      </svg>
+    `;
+  } else {
+    // Audio (mp3, m4a, wav, flac, ecc.)
+    iconClass = 'recording-audio-icon type-audio';
+    tagClass = 'recording-tag tag-audio';
+    primaryBtnLabel = 'Ascolta';
+    primaryBtnTitle = 'Ascolta anteprima audio';
+    iconSvg = `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+        <line x1="12" y1="19" x2="12" y2="23"></line>
+        <line x1="8" y1="23" x2="16" y2="23"></line>
+      </svg>
+    `;
+  }
 
   const item = document.createElement('div');
   item.className = `recording-item ${isSelected ? 'selected' : ''}`;
@@ -2571,31 +2707,24 @@ function createRecordingItemElement(rec, lessonName) {
   item.innerHTML = `
     <div class="recording-left">
       <input type="checkbox" class="recording-checkbox" aria-label="Seleziona ${cleanName}" ${isSelected ? 'checked' : ''}>
-      <div class="recording-audio-icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-          <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-          <line x1="12" y1="19" x2="12" y2="23"></line>
-          <line x1="8" y1="23" x2="16" y2="23"></line>
-        </svg>
+      <div class="${iconClass}">
+        ${iconSvg}
       </div>
       <div class="recording-details">
         <div class="recording-name" title="${cleanName}">${cleanName}</div>
         <div class="recording-meta">
-          <span class="recording-tag">${ext}</span>
+          <span class="${tagClass}">${ext.toUpperCase()}</span>
           ${rec.size ? `<span>${rec.size}</span>` : ''}
           ${rec.duration ? `<span>• ${rec.duration}</span>` : ''}
         </div>
       </div>
     </div>
     <div class="recording-actions">
-      <button type="button" class="recording-btn-play" title="Ascolta anteprima audio">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-          <polygon points="5 3 19 12 5 21 5 3"></polygon>
-        </svg>
-        <span>Ascolta</span>
+      <button type="button" class="recording-btn-play" title="${primaryBtnTitle}">
+        ${primaryBtnIcon}
+        <span>${primaryBtnLabel}</span>
       </button>
-      <button type="button" class="recording-btn-download" title="Scarica questa registrazione">
+      <button type="button" class="recording-btn-download" title="Scarica questo file">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
           <polyline points="7 10 12 15 17 10"></polyline>
@@ -2620,11 +2749,15 @@ function createRecordingItemElement(rec, lessonName) {
     updateBatchBarUI();
   });
 
-  // Tasto Ascolta Anteprima
+  // Tasto Primario: Ascolta / Guarda / Leggi PDF
   const playBtn = item.querySelector('.recording-btn-play');
   playBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    playAudioRecording(rec, lessonName);
+    if (isPdf) {
+      openDrivePdfFile(rec, lessonName);
+    } else {
+      playAudioRecording(rec, lessonName);
+    }
   });
 
   // Tasto Scarica Singolo
@@ -2635,6 +2768,30 @@ function createRecordingItemElement(rec, lessonName) {
   });
 
   return item;
+}
+
+/**
+ * Apre e visualizza un file PDF da Google Drive all'interno del PDF viewer integrato
+ */
+async function openDrivePdfFile(rec, lessonName) {
+  showToast(`Caricamento PDF: ${rec.name}...`, 'info');
+  try {
+    const downloadUrl = `/api/drive/download/${encodeURIComponent(rec.id)}?name=${encodeURIComponent(rec.name)}`;
+    const res = await fetch(downloadUrl);
+    if (!res.ok) throw new Error(`Errore di rete (${res.status})`);
+    const blob = await res.blob();
+    const pdfItem = {
+      parent: rec.name.replace(/\.pdf$/i, ''),
+      fileName: rec.name,
+      grandparent: lessonName || 'Google Drive',
+      blob: blob,
+    };
+    await openPdfViewer(pdfItem);
+  } catch (err) {
+    console.error('Errore apertura PDF da Drive:', err);
+    showToast('Download in corso per apertura esterna...', 'info');
+    downloadSingleRecording(rec);
+  }
 }
 
 /**
@@ -2841,6 +2998,13 @@ function playAudioRecording(rec, lessonName) {
   if (titleEl) titleEl.textContent = rec.name;
   if (subtitleEl) subtitleEl.textContent = lessonName || 'Registrazione Lezione';
 
+  // Evidenzia visivamente la riga della registrazione in riproduzione
+  document.querySelectorAll('.recording-item.is-playing').forEach(el => el.classList.remove('is-playing'));
+  const rowEl = document.getElementById(`recording-row-${rec.id}`);
+  if (rowEl) {
+    rowEl.classList.add('is-playing');
+  }
+
   let srcUrl = '';
   if (rec.isDemo) {
     // Genera un tono sinusoidale con Web Audio API
@@ -2857,6 +3021,11 @@ function playAudioRecording(rec, lessonName) {
       osc.start();
       osc.stop(audioCtx.currentTime + 3);
       showToast(`Riproduzione anteprima demo: ${rec.name}`, 'info');
+      setTimeout(() => {
+        if (activeAudioFile === rec) {
+          if (rowEl) rowEl.classList.remove('is-playing');
+        }
+      }, 3000);
     } catch (e) {}
   } else {
     srcUrl = `/api/drive/download/${encodeURIComponent(rec.id)}?name=${encodeURIComponent(rec.name)}`;
@@ -2864,6 +3033,19 @@ function playAudioRecording(rec, lessonName) {
     audioElement.play().catch(e => {
       console.warn('Autoplay bloccato dal browser:', e);
     });
+
+    audioElement.onended = () => {
+      document.querySelectorAll('.recording-item.is-playing').forEach(el => el.classList.remove('is-playing'));
+    };
+    audioElement.onpause = () => {
+      document.querySelectorAll('.recording-item.is-playing').forEach(el => el.classList.remove('is-playing'));
+    };
+    audioElement.onplay = () => {
+      if (activeAudioFile) {
+        const curRow = document.getElementById(`recording-row-${activeAudioFile.id}`);
+        if (curRow) curRow.classList.add('is-playing');
+      }
+    };
   }
 
   playerBar.classList.remove('hidden');
@@ -2879,6 +3061,7 @@ function closeAudioPlayer() {
     audioElement.pause();
     audioElement.src = '';
   }
+  document.querySelectorAll('.recording-item.is-playing').forEach(el => el.classList.remove('is-playing'));
   if (playerBar) playerBar.classList.add('hidden');
   activeAudioFile = null;
 }

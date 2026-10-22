@@ -369,11 +369,50 @@ async function crawlDriveTree(folderId: string, depth = 0, maxDepth = 6, visited
     }
   }
 
-  // Ordina sottocartelle e file alfabeticamente/numericamente
+  // Ordina sottocartelle alfabeticamente/numericamente
   node.folders!.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
-  node.files!.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+  // Ordina i file in ORDINE DECRESCENTE (il file con data/orario più recente in cima)
+  node.files!.sort((a, b) => compareItemsDescending(a, b));
 
   return node;
+}
+
+/**
+ * Confronta due elementi in ordine decrescente (più recente in cima)
+ */
+function compareItemsDescending(a: { name: string; modified?: string }, b: { name: string; modified?: string }): number {
+  const nameA = a.name || '';
+  const nameB = b.name || '';
+
+  // 1. Cerca pattern di data/orario nel nome del file (es. 2026-09-15 10 37 17 o 2026-10-22)
+  const dateRegex = /(\d{4})[-_.](\d{2})[-_.](\d{2})(?:[ T_](\d{2})[-_.:](\d{2})(?:[-_.:](\d{2}))?)?/;
+  const matchA = nameA.match(dateRegex);
+  const matchB = nameB.match(dateRegex);
+
+  if (matchA && matchB) {
+    const keyA = `${matchA[1]}-${matchA[2]}-${matchA[3]} ${matchA[4] || '00'}:${matchA[5] || '00'}:${matchA[6] || '00'}`;
+    const keyB = `${matchB[1]}-${matchB[2]}-${matchB[3]} ${matchB[4] || '00'}:${matchB[5] || '00'}:${matchB[6] || '00'}`;
+    if (keyA !== keyB) {
+      // Ordine DECRESCENTE: il più recente (B) prima del più vecchio (A)
+      return keyB.localeCompare(keyA);
+    }
+  } else if (matchA && !matchB) {
+    return -1;
+  } else if (!matchA && matchB) {
+    return 1;
+  }
+
+  // 2. Controllo se presente campo modified
+  if (a.modified && b.modified && a.modified !== b.modified) {
+    const timeA = new Date(a.modified).getTime();
+    const timeB = new Date(b.modified).getTime();
+    if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) {
+      return timeB - timeA;
+    }
+  }
+
+  // 3. Fallback: Ordinamento alfanumerico decrescente
+  return nameB.localeCompare(nameA, undefined, { numeric: true, sensitivity: 'base' });
 }
 
 /**
