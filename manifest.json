@@ -1,8 +1,8 @@
 {
-  "id": "notepdf-github-reader",
-  "name": "Note PDF - GitHub Reader",
-  "short_name": "NotePDF",
-  "description": "Visualizzatore e sincronizzatore offline di dispense universitarie e note PDF da repository GitHub, ottimizzato per tablet.",
+  "id": "fedesnotes-reader-pwa",
+  "name": "Fede's Notes - Reader & Archivio",
+  "short_name": "Fede's Notes",
+  "description": "Visualizzatore e sincronizzatore offline di dispense universitarie e archivio su tablet.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
