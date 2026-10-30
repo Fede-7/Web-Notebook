@@ -1,7 +1,9 @@
 /**
- * Service Worker per Note PDF PWA (v4)
+ * Service Worker per Fede's Notes PWA
+ * Gestisce il caching dell'app shell e delle librerie statiche (PDF.js).
  */
-const CACHE_NAME = 'notepdf-shell-v8';
+
+const CACHE_NAME = 'fedesnotes-shell-v11';
 
 const APP_SHELL_ASSETS = [
   './',
@@ -13,7 +15,6 @@ const APP_SHELL_ASSETS = [
   './icon.svg',
   './pwa-192x192.png',
   './pwa-512x512.png',
-  './pwa-maskable-512x512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
 ];
@@ -45,7 +46,6 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((name) => {
           if (name !== CACHE_NAME) {
-            console.log('[SW] Rimozione vecchia cache:', name);
             return caches.delete(name);
           }
         })
@@ -59,8 +59,8 @@ self.addEventListener('fetch', (event) => {
 
   if (
     requestUrl.pathname.startsWith('/api/') ||
-    requestUrl.hostname.includes('api.github.com') ||
-    requestUrl.hostname.includes('raw.githubusercontent.com')
+    requestUrl.hostname.includes('drive.google.com') ||
+    requestUrl.hostname.includes('googleusercontent.com')
   ) {
     return;
   }
@@ -80,6 +80,24 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  if (
+    requestUrl.origin === self.location.origin &&
+    (requestUrl.pathname.endsWith('.js') || requestUrl.pathname.endsWith('.css'))
+  ) {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
@@ -90,9 +108,7 @@ self.addEventListener('fetch', (event) => {
         if (
           networkResponse &&
           (networkResponse.status === 200 || networkResponse.type === 'opaque') &&
-          (requestUrl.pathname.endsWith('.js') ||
-           requestUrl.pathname.endsWith('.css') ||
-           requestUrl.pathname.endsWith('.png') ||
+          (requestUrl.pathname.endsWith('.png') ||
            requestUrl.pathname.endsWith('.svg') ||
            requestUrl.pathname.endsWith('.woff2') ||
            requestUrl.hostname.includes('cdnjs.cloudflare.com'))

@@ -1,12 +1,11 @@
 /**
- * Service Worker per Note PDF PWA (v6)
- * Gestisce il caching dell'app shell e delle risorse statiche.
- * - Navigazione HTML: Network-First con fallback su cache
- * - JS e CSS: Network-First, così le nuove versioni sono visibili subito
- * - Immagini, font, PDF.js: Cache-First con fallback su network
+ * Service Worker per Fede's Notes PWA
+ * Gestisce il caching dell'app shell e delle librerie statiche (PDF.js).
+ * - Navigazione HTML, JS e CSS: Network-First con fallback su cache
+ * - Immagini, icone e PDF.js CDN: Cache-First con fallback su network
  */
 
-const CACHE_NAME = 'notepdf-shell-v8';
+const CACHE_NAME = 'fedesnotes-shell-v11';
 
 const APP_SHELL_ASSETS = [
   './',
@@ -18,7 +17,6 @@ const APP_SHELL_ASSETS = [
   './icon.svg',
   './pwa-192x192.png',
   './pwa-512x512.png',
-  './pwa-maskable-512x512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
 ];
@@ -50,7 +48,6 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((name) => {
           if (name !== CACHE_NAME) {
-            console.log('[SW] Rimozione vecchia cache:', name);
             return caches.delete(name);
           }
         })
@@ -62,16 +59,16 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const requestUrl = new URL(event.request.url);
 
-  // Non intercettare chiamate API dinamiche (gestite dall'engine in app.js)
+  // Non intercettare chiamate API dinamiche o flussi multimediali da Drive
   if (
     requestUrl.pathname.startsWith('/api/') ||
-    requestUrl.hostname.includes('api.github.com') ||
-    requestUrl.hostname.includes('raw.githubusercontent.com')
+    requestUrl.hostname.includes('drive.google.com') ||
+    requestUrl.hostname.includes('googleusercontent.com')
   ) {
     return;
   }
 
-  // Strategia Network-First per navigazione HTML: assicura che gli aggiornamenti HTML siano visibili subito
+  // Strategia Network-First per navigazione HTML
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
@@ -87,10 +84,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Strategia Network-First per JS e CSS: le nuove versioni di app.js e style.css
-  // diventano subito visibili invece di restare bloccate in cache (fix bottone Scarica).
-  // La cache viene usata solo come fallback quando si è offline.
-  if (requestUrl.pathname.endsWith('.js') || requestUrl.pathname.endsWith('.css')) {
+  // Strategia Network-First per JS e CSS locali così ogni aggiornamento è immediato
+  if (
+    requestUrl.origin === self.location.origin &&
+    (requestUrl.pathname.endsWith('.js') || requestUrl.pathname.endsWith('.css'))
+  ) {
     event.respondWith(
       fetch(event.request)
         .then((networkResponse) => {
@@ -105,7 +103,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Strategia Cache-First con fallback su Network per asset statici (immagini, font, PDF.js)
+  // Strategia Cache-First con fallback su Network per asset statici e PDF.js CDN
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
@@ -116,9 +114,7 @@ self.addEventListener('fetch', (event) => {
         if (
           networkResponse &&
           (networkResponse.status === 200 || networkResponse.type === 'opaque') &&
-          (requestUrl.pathname.endsWith('.js') ||
-           requestUrl.pathname.endsWith('.css') ||
-           requestUrl.pathname.endsWith('.png') ||
+          (requestUrl.pathname.endsWith('.png') ||
            requestUrl.pathname.endsWith('.svg') ||
            requestUrl.pathname.endsWith('.woff2') ||
            requestUrl.hostname.includes('cdnjs.cloudflare.com'))

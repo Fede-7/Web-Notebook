@@ -1,6 +1,6 @@
 {
   "name": "Note PDF PWA",
-  "description": "PWA per la lettura e sincronizzazione offline di dispense e note PDF da repository GitHub su tablet.",
+  "description": "PWA per la lettura e consultazione di dispense PDF, registrazioni audio e video lezioni sincronizzate da Google Drive.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

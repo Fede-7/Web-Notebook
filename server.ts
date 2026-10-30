@@ -4,7 +4,6 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
-
 import fs from 'fs';
 import { Readable } from 'stream';
 
@@ -19,208 +18,14 @@ const HOST = '0.0.0.0';
 
 app.use(express.json());
 
-// Helper per recuperare i parametri GitHub dal file .env
-function getEnvConfig() {
-  const token = (process.env.GITHUB_TOKEN || '').trim();
-  const owner = (process.env.GITHUB_OWNER || 'federicodellini').trim();
-  const repo = (process.env.GITHUB_REPO || 'obsidian-notes').trim();
-  const branch = (process.env.GITHUB_BRANCH || 'main').trim();
-  const rootPath = (process.env.GITHUB_ROOT_PATH || '00 - Obsidian Notes').trim();
-  const rawExcludes = process.env.GITHUB_EXCLUDE_DIRS || 'assets,asset,Wait,Spunto,Essenziale';
-  const excludeDirs = rawExcludes.split(',').map(s => s.trim()).filter(Boolean);
-
-  return {
-    token,
-    owner,
-    repo,
-    branch,
-    rootPath,
-    excludeDirs,
-    hasToken: Boolean(token),
-  };
-}
-
 /* ==========================================================================
-   ENDPOINT API SICURI (Proxy Server-Side)
-   Il token GitHub rimane protetto nel server e NON viene mai inviato al client!
+   GOOGLE DRIVE INTEGRATION (Cartella Radice Condivisa -> Sottocartelle & File)
+   Scansione ricorsiva con metadati reali (data modifica, dimensione) e
+   rinomina automatica dei PDF "main" con il nome della cartella genitore.
    ========================================================================== */
 
-/**
- * GET /api/config
- * Restituisce le impostazioni pubbliche (.env) senza mai esporre il token segreto
- */
-app.get('/api/config', (_req: Request, res: Response) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  const cfg = getEnvConfig();
-  res.json({
-    owner: cfg.owner,
-    repo: cfg.repo,
-    branch: cfg.branch,
-    rootPath: cfg.rootPath,
-    excludeDirs: cfg.excludeDirs,
-    hasToken: cfg.hasToken,
-    driveFolderId: DEFAULT_DRIVE_FOLDER_ID,
-    serverMode: true,
-  });
-});
-
-/**
- * GET /api/tree
- * Esegue la scansione dell'albero Git trees di GitHub iniettando il token .env
- * Supporta If-None-Match (ETag) per restituire 304 Not Modified se nulla è cambiato.
- */
-app.get('/api/tree', async (req: Request, res: Response) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-
-  try {
-    const cfg = getEnvConfig();
-    const queryOwner = (req.query.owner as string) || cfg.owner;
-    const queryRepo = (req.query.repo as string) || cfg.repo;
-    const queryBranch = (req.query.branch as string) || cfg.branch;
-    const isForce = req.query.force === 'true';
-
-    const url = `https://api.github.com/repos/${encodeURIComponent(queryOwner)}/${encodeURIComponent(queryRepo)}/git/trees/${encodeURIComponent(queryBranch)}?recursive=1`;
-
-    const headers: Record<string, string> = {
-      'Accept': 'application/vnd.github.v3+json',
-      'User-Agent': 'NotePDF-Server-Proxy/1.0',
-    };
-
-    // Inietta il token segreto configurato in .env
-    if (cfg.token) {
-      headers['Authorization'] = `Bearer ${cfg.token}`;
-    }
-
-    // Inoltra l'ETag solo se non è richiesta una sincronizzazione forzata
-    const clientETag = req.headers['if-none-match'];
-    if (clientETag && !isForce) {
-      headers['If-None-Match'] = Array.isArray(clientETag) ? clientETag[0] : clientETag;
-    }
-
-    const githubRes = await fetch(url, { headers });
-
-    // Se GitHub risponde 304, restituisci immediatamente 304 al client
-    if (githubRes.status === 304) {
-      res.status(304).end();
-      return;
-    }
-
-    const resETag = githubRes.headers.get('ETag');
-    if (resETag) {
-      res.setHeader('ETag', resETag);
-    }
-
-    // Inoltra intestazioni utili di rate limit
-    const rateLimitRemaining = githubRes.headers.get('x-ratelimit-remaining');
-    const rateLimitReset = githubRes.headers.get('x-ratelimit-reset');
-    if (rateLimitRemaining) res.setHeader('x-ratelimit-remaining', rateLimitRemaining);
-    if (rateLimitReset) res.setHeader('x-ratelimit-reset', rateLimitReset);
-
-    if (!githubRes.ok) {
-      const errBody = await githubRes.text();
-      res.status(githubRes.status).send(errBody);
-      return;
-    }
-
-    const data = await githubRes.json();
-    res.json(data);
-  } catch (err: any) {
-    console.error('Errore /api/tree proxy:', err);
-    res.status(500).json({ error: 'Errore interno nel proxy GitHub', details: err.message });
-  }
-});
-
-/**
- * GET /api/blob/:sha
- * Scarica il file binario (PDF) da GitHub usando le credenziali sicure del server
- */
-app.get('/api/blob/:sha', async (req: Request, res: Response) => {
-  try {
-    const cfg = getEnvConfig();
-    const sha = req.params.sha;
-    const queryOwner = (req.query.owner as string) || cfg.owner;
-    const queryRepo = (req.query.repo as string) || cfg.repo;
-
-    const url = `https://api.github.com/repos/${encodeURIComponent(queryOwner)}/${encodeURIComponent(queryRepo)}/git/blobs/${encodeURIComponent(sha)}`;
-
-    const headers: Record<string, string> = {
-      'Accept': 'application/vnd.github.raw',
-      'User-Agent': 'NotePDF-Server-Proxy/1.0',
-    };
-
-    if (cfg.token) {
-      headers['Authorization'] = `Bearer ${cfg.token}`;
-    }
-
-    const githubRes = await fetch(url, { headers });
-
-    if (!githubRes.ok) {
-      const errText = await githubRes.text();
-      res.status(githubRes.status).send(errText);
-      return;
-    }
-
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-
-    const arrayBuffer = await githubRes.arrayBuffer();
-    res.send(Buffer.from(arrayBuffer));
-  } catch (err: any) {
-    console.error('Errore /api/blob proxy:', err);
-    res.status(500).json({ error: 'Impossibile recuperare il file PDF', details: err.message });
-  }
-});
-
-/**
- * GET /api/raw
- * Proxy per file raw percorsi arbitrari
- */
-app.get('/api/raw', async (req: Request, res: Response) => {
-  try {
-    const cfg = getEnvConfig();
-    const filePath = req.query.path as string;
-    const queryOwner = (req.query.owner as string) || cfg.owner;
-    const queryRepo = (req.query.repo as string) || cfg.repo;
-    const queryBranch = (req.query.branch as string) || cfg.branch;
-
-    if (!filePath) {
-      res.status(400).json({ error: 'Parametro path mancante' });
-      return;
-    }
-
-    const url = `https://raw.githubusercontent.com/${encodeURIComponent(queryOwner)}/${encodeURIComponent(queryRepo)}/${encodeURIComponent(queryBranch)}/${encodeURI(filePath)}`;
-
-    const headers: Record<string, string> = {
-      'User-Agent': 'NotePDF-Server-Proxy/1.0',
-    };
-
-    if (cfg.token) {
-      headers['Authorization'] = `token ${cfg.token}`;
-    }
-
-    const rawRes = await fetch(url, { headers });
-    if (!rawRes.ok) {
-      res.status(rawRes.status).send(await rawRes.text());
-      return;
-    }
-
-    res.setHeader('Content-Type', 'application/pdf');
-    const arrayBuffer = await rawRes.arrayBuffer();
-    res.send(Buffer.from(arrayBuffer));
-  } catch (err: any) {
-    console.error('Errore /api/raw proxy:', err);
-    res.status(500).json({ error: 'Errore nel download raw', details: err.message });
-  }
-});
-
-/* ==========================================================================
-   GOOGLE DRIVE INTEGRATION (Registrazioni Audio / Video / Lezioni)
-   Scansione ricorsiva delle cartelle e download file
-   ========================================================================== */
-
-const DEFAULT_DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || '1k77YG_N_xwMctML4d-aV2PfuyIY-ECKS';
+const DEFAULT_DRIVE_FOLDER_ID =
+  (process.env.GOOGLE_DRIVE_FOLDER_ID || '').trim() || '1k77YG_N_xwMctML4d-aV2PfuyIY-ECKS';
 
 interface DriveItem {
   id: string;
@@ -228,39 +33,105 @@ interface DriveItem {
   isFolder: boolean;
   mimeType: string;
   size?: string;
+  sizeBytes?: number;
   modified?: string;
+  modifiedMs?: number;
   folders?: DriveItem[];
   files?: DriveItem[];
 }
 
-let driveCache: { [folderId: string]: { tree: DriveItem; timestamp: number } } = {};
+const driveCache: { [folderId: string]: { tree: DriveItem; timestamp: number; refreshing?: boolean } } = {};
 const DRIVE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minuti
 
 /**
- * Pulisce i nomi dei file e delle cartelle rimuovendo i suffissi di accessibilità di Google Drive
- * (es. ".mp3 Audio Shared" -> ".mp3", "Cartella Shared folder" -> "Cartella")
+ * Decodifica le entità HTML e le sequenze unicode restituite da Google Drive
+ */
+function decodeHtmlEntities(input: string): string {
+  if (!input) return '';
+  return input
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_m, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;|&#x27;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&nbsp;/gi, ' ');
+}
+
+/**
+ * Pulisce i nomi dei file e delle cartelle rimuovendo entità HTML e suffissi di accessibilità di Google Drive
  */
 function cleanDriveItemName(raw: string, isFolder: boolean): string {
   if (!raw) return '';
-  let name = raw.trim();
+  let name = decodeHtmlEntities(raw).trim();
   if (isFolder) {
-    return name.replace(/\s+(Shared folder|cartella condivisa|folder|cartella|shared|condiviso)$/i, '').trim();
+    return name
+      .replace(/\s+(Shared folder|cartella condivisa|folder|cartella|shared|condiviso)$/i, '')
+      .trim();
   }
-  // Se ha un'estensione nota seguita dai suffissi di accessibilità di Google Drive (es. '.mp3 Audio Shared')
-  name = name.replace(/\.(mp3|m4a|wav|aac|flac|ogg|wma|mp4|mkv|pdf|zip|rar|7z)\b.*$/i, '.$1');
-  // Rimuove eventuali suffissi di Google Drive rimasti
-  name = name.replace(/\s+(Audio Shared|Audio Condiviso|Audio|Video Shared|Video Condiviso|Video|PDF Shared|PDF Condiviso|Document Shared|Document Condiviso|Shared|Condiviso)$/i, '').trim();
+  name = name.replace(/\.(pdf|mp3|m4a|wav|aac|flac|ogg|wma|mp4|mkv|mov|webm|zip|rar|7z)\b.*$/i, '.$1');
+  name = name
+    .replace(
+      /\s+(Audio Shared|Audio Condiviso|Audio|Video Shared|Video Condiviso|Video|PDF Shared|PDF Condiviso|Document Shared|Document Condiviso|Shared|Condiviso)$/i,
+      ''
+    )
+    .trim();
   return name;
 }
 
 /**
- * Esegue il parsing di una singola cartella pubblica di Google Drive
+ * Sostituisce la parola "main" nei file PDF con il nome della cartella genitore
+ * (es. "main-A4.pdf" dentro "Tecnologie Web" -> "Tecnologie Web-A4.pdf")
+ */
+function applyParentFolderNameToPdf(fileName: string, parentFolderName?: string): string {
+  if (!fileName || !parentFolderName) return fileName;
+  const cleanParent = cleanDriveItemName(parentFolderName, true);
+  if (!cleanParent || !/\.pdf$/i.test(fileName)) return fileName;
+  return fileName.replace(/(^|[-_. ()[\]])main(?=$|[-_. ()[\]])/i, (_match, prefix) => `${prefix}${cleanParent}`);
+}
+
+/**
+ * Formatta una dimensione in byte in formato leggibile (KB / MB / GB)
+ */
+function formatBytes(bytes: number | null | undefined): string | undefined {
+  if (bytes === null || bytes === undefined || isNaN(bytes) || bytes <= 0) return undefined;
+  if (bytes < 1024 * 1024) {
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  }
+  if (bytes < 1024 * 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+/**
+ * Determina il Content-Type accurato in base all'estensione del file
+ */
+function inferMimeType(filename: string, fallback = 'application/octet-stream'): string {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.mp3')) return 'audio/mpeg';
+  if (lower.endsWith('.m4a')) return 'audio/mp4';
+  if (lower.endsWith('.wav')) return 'audio/wav';
+  if (lower.endsWith('.ogg')) return 'audio/ogg';
+  if (lower.endsWith('.flac')) return 'audio/flac';
+  if (lower.endsWith('.mp4')) return 'video/mp4';
+  if (lower.endsWith('.webm')) return 'video/webm';
+  if (lower.endsWith('.mov')) return 'video/quicktime';
+  if (lower.endsWith('.mkv')) return 'video/x-matroska';
+  return fallback;
+}
+
+/**
+ * Esegue il parsing di una singola cartella pubblica condivisa su Google Drive
+ * estraendo anche timestamp esatti di modifica (modifiedMs) e dimensioni in byte
  */
 async function parseDriveFolder(folderId: string): Promise<{ title: string; items: DriveItem[] }> {
-  const url = `https://drive.google.com/drive/folders/${folderId}`;
+  const url = `https://drive.google.com/drive/folders/${encodeURIComponent(folderId)}`;
   const response = await fetch(url, {
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
     },
   });
@@ -271,64 +142,162 @@ async function parseDriveFolder(folderId: string): Promise<{ title: string; item
 
   const text = await response.text();
 
-  // Estrae il titolo della cartella dal tag <title>
   const titleMatch = text.match(/<title>([^<]+)<\/title>/);
-  let title = titleMatch ? titleMatch[1].replace(/\s*[–-]\s*Google\s*Drive\s*$/i, '').trim() : 'Cartella';
+  const rawTitle = titleMatch
+    ? titleMatch[1].replace(/\s*[–-]\s*Google\s*Drive\s*$/i, '').trim()
+    : 'Archivio Drive';
+  const title = cleanDriveItemName(rawTitle, true);
 
-  const items: DriveItem[] = [];
-  const seenIds = new Set<string>();
+  const itemsMap = new Map<string, DriveItem>();
 
-  // Pattern 1: elementi aria-label con ID in attributo ssk
-  const reSsk = /aria-label="([^"]+)"[^>]*ssk='5:[^:]*:([a-zA-Z0-9_-]+)-0-16'/g;
+  // Pattern 0 (Primario ad alta precisione): payload _initData con nome esatto, MIME, timestamp ms e dimensione byte
+  const unescaped = text
+    .replace(/\\x22/g, '"')
+    .replace(/\\x5b/g, '[')
+    .replace(/\\x5d/g, ']')
+    .replace(/\\\//g, '/');
+
+  const reInitData =
+    /"([a-zA-Z0-9_-]{25,})",\["([a-zA-Z0-9_-]+)"\],"([^"]+)","([^"]+)",[0-9]+,null,[0-9]+,[0-9]+,[0-9]+,([0-9]{10,15}),([0-9]{10,15}),null,null,([0-9]+|null)/g;
+
   let match: RegExpExecArray | null;
-  while ((match = reSsk.exec(text)) !== null) {
-    const rawLabel = match[1];
-    const id = match[2];
-    if (seenIds.has(id)) continue;
-    seenIds.add(id);
+  while ((match = reInitData.exec(unescaped)) !== null) {
+    const id = match[1];
+    const parentId = match[2];
+    if (parentId !== folderId) continue;
 
-    const isFolder = /folder|cartella/i.test(rawLabel);
-    const cleanName = cleanDriveItemName(rawLabel, isFolder);
-    const isAudio = /\.(mp3|m4a|wav|aac|ogg|flac|wma)$/i.test(cleanName) || /audio/i.test(rawLabel);
-    items.push({
+    const rawName = match[3];
+    const mimeType = match[4];
+    const modifiedMs = Number(match[6]);
+    const sizeBytes = match[7] !== 'null' ? Number(match[7]) : undefined;
+
+    const isFolder = mimeType === 'application/vnd.google-apps.folder';
+    const cleanName = cleanDriveItemName(rawName, isFolder);
+
+    itemsMap.set(id, {
       id,
       name: cleanName,
       isFolder,
-      mimeType: isFolder ? 'application/vnd.google-apps.folder' : (isAudio ? 'audio/mpeg' : 'application/octet-stream'),
+      mimeType: isFolder ? mimeType : inferMimeType(cleanName, mimeType),
+      modifiedMs: !isNaN(modifiedMs) ? modifiedMs : undefined,
+      modified: !isNaN(modifiedMs) ? new Date(modifiedMs).toISOString() : undefined,
+      sizeBytes,
+      size: isFolder ? undefined : formatBytes(sizeBytes),
     });
   }
 
-  // Pattern 2: elementi memorizzati nel payload JSON embedded ds:3
-  // Es: [[null,"ID"],null,null,null,"MIME_TYPE",... [[["NOME_FILE",null,1]]]]
+  // Pattern 1 (Fallback HTML aria-label + ssk)
+  const reSsk = /aria-label="([^"]+)"[^>]*ssk='5:[^:]*:([a-zA-Z0-9_-]+)-0-16'/g;
+  while ((match = reSsk.exec(text)) !== null) {
+    const rawLabel = match[1];
+    const id = match[2];
+    if (itemsMap.has(id)) continue;
+
+    const isFolder = /folder|cartella/i.test(rawLabel) && !/\.(pdf|mp3|mp4|m4a|wav|mkv|zip)\b/i.test(rawLabel);
+    const cleanName = cleanDriveItemName(rawLabel, isFolder);
+    itemsMap.set(id, {
+      id,
+      name: cleanName,
+      isFolder,
+      mimeType: isFolder ? 'application/vnd.google-apps.folder' : inferMimeType(cleanName),
+    });
+  }
+
+  // Pattern 2 (Fallback JSON ds)
   const reDs = /\[\[null,"([a-zA-Z0-9_-]{25,})"\],null,null,null,"([^"]+)",(?:(?!\[\[null,")[\s\S])*?\[\[\["([^"]+)"/g;
   while ((match = reDs.exec(text)) !== null) {
     const id = match[1];
     const mimeType = match[2];
-    const name = match[3];
-    if (!seenIds.has(id)) {
-      seenIds.add(id);
+    const rawName = match[3];
+    if (!itemsMap.has(id)) {
       const isFolder = mimeType === 'application/vnd.google-apps.folder';
-      const cleanName = cleanDriveItemName(name, isFolder);
-      items.push({
+      const cleanName = cleanDriveItemName(rawName, isFolder);
+      itemsMap.set(id, {
         id,
         name: cleanName,
         isFolder,
-        mimeType,
+        mimeType: isFolder ? mimeType : inferMimeType(cleanName, mimeType),
       });
     }
   }
 
-  return { title, items };
+  return { title, items: Array.from(itemsMap.values()) };
+}
+
+/**
+ * Confronta due file in ordine decrescente (il più recente sempre in cima, indipendentemente dalla cartella)
+ */
+function compareItemsDescending(a: DriveItem, b: DriveItem): number {
+  const nameA = a.name || '';
+  const nameB = b.name || '';
+
+  const dateRegex = /(\d{4})[-_.](\d{2})[-_.](\d{2})(?:[ T_-](\d{2})[-_.: ](\d{2})(?:[-_.: ](\d{2}))?)?/;
+  const matchA = nameA.match(dateRegex);
+  const matchB = nameB.match(dateRegex);
+
+  if (matchA && matchB) {
+    const keyA = `${matchA[1]}-${matchA[2]}-${matchA[3]} ${matchA[4] || '00'}:${matchA[5] || '00'}:${matchA[6] || '00'}`;
+    const keyB = `${matchB[1]}-${matchB[2]}-${matchB[3]} ${matchB[4] || '00'}:${matchB[5] || '00'}:${matchB[6] || '00'}`;
+    if (keyA !== keyB) {
+      return keyB.localeCompare(keyA);
+    }
+  }
+
+  if (typeof a.modifiedMs === 'number' && typeof b.modifiedMs === 'number' && a.modifiedMs !== b.modifiedMs) {
+    return b.modifiedMs - a.modifiedMs;
+  }
+
+  if (matchA && !matchB) return -1;
+  if (!matchA && matchB) return 1;
+
+  if (a.modified && b.modified && a.modified !== b.modified) {
+    const timeA = new Date(a.modified).getTime();
+    const timeB = new Date(b.modified).getTime();
+    if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) {
+      return timeB - timeA;
+    }
+  }
+
+  return nameB.localeCompare(nameA, undefined, { numeric: true, sensitivity: 'base' });
+}
+
+/**
+ * Esegue promesse con limite di concorrenza per evitare rate-limiting su Google Drive
+ */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function runWorker() {
+    while (nextIndex < items.length) {
+      const idx = nextIndex++;
+      results[idx] = await worker(items[idx]);
+    }
+  }
+
+  const runners = Array.from({ length: Math.min(concurrency, items.length) }, () => runWorker());
+  await Promise.all(runners);
+  return results;
 }
 
 /**
  * Scansione ricorsiva completa dell'albero di cartelle di Google Drive
  */
-async function crawlDriveTree(folderId: string, depth = 0, maxDepth = 6, visited = new Set<string>()): Promise<DriveItem> {
+async function crawlDriveTree(
+  folderId: string,
+  depth = 0,
+  maxDepth = 6,
+  visited = new Set<string>(),
+  explicitFolderName?: string
+): Promise<DriveItem> {
   if (visited.has(folderId) || depth >= maxDepth) {
     return {
       id: folderId,
-      name: 'Riferimento circolare o limite profondità',
+      name: explicitFolderName || 'Cartella',
       isFolder: true,
       mimeType: 'application/vnd.google-apps.folder',
       folders: [],
@@ -338,98 +307,88 @@ async function crawlDriveTree(folderId: string, depth = 0, maxDepth = 6, visited
   visited.add(folderId);
 
   const parsed = await parseDriveFolder(folderId);
+  const folderName = explicitFolderName || parsed.title;
+
   const node: DriveItem = {
     id: folderId,
-    name: parsed.title,
+    name: folderName,
     isFolder: true,
     mimeType: 'application/vnd.google-apps.folder',
     folders: [],
     files: [],
   };
 
-  for (const item of parsed.items) {
-    if (item.isFolder) {
-      try {
-        const subNode = await crawlDriveTree(item.id, depth + 1, maxDepth, visited);
-        subNode.name = item.name || subNode.name;
-        node.folders!.push(subNode);
-      } catch (subErr) {
-        console.warn(`Errore scansione sottocartella ${item.name} (${item.id}):`, subErr);
-        node.folders!.push({
-          id: item.id,
-          name: item.name,
-          isFolder: true,
-          mimeType: 'application/vnd.google-apps.folder',
-          folders: [],
-          files: [],
-        });
-      }
-    } else {
-      node.files!.push(item);
-    }
-  }
+  const folderItems = parsed.items.filter((i) => i.isFolder);
+  const fileItems = parsed.items.filter((i) => !i.isFolder);
 
-  // Ordina sottocartelle alfabeticamente/numericamente
-  node.folders!.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
-  // Ordina i file in ORDINE DECRESCENTE (il file con data/orario più recente in cima)
-  node.files!.sort((a, b) => compareItemsDescending(a, b));
+  // Applica la sostituzione "main" -> nome cartella genitore sui file PDF
+  node.files = fileItems.map((file) => ({
+    ...file,
+    name: applyParentFolderNameToPdf(file.name, folderName),
+  }));
+
+  const subResults = await mapWithConcurrency(folderItems, 4, async (item) => {
+    try {
+      const subNode = await crawlDriveTree(item.id, depth + 1, maxDepth, visited, item.name);
+      subNode.name = item.name || subNode.name;
+      return subNode;
+    } catch (subErr) {
+      console.warn(`Errore scansione sottocartella ${item.name} (${item.id}):`, subErr);
+      return {
+        id: item.id,
+        name: item.name,
+        isFolder: true,
+        mimeType: 'application/vnd.google-apps.folder',
+        folders: [],
+        files: [],
+      } as DriveItem;
+    }
+  });
+
+  node.folders = subResults;
+  node.folders.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+  node.files.sort((a, b) => compareItemsDescending(a, b));
 
   return node;
 }
 
-/**
- * Confronta due elementi in ordine decrescente (più recente in cima)
- */
-function compareItemsDescending(a: { name: string; modified?: string }, b: { name: string; modified?: string }): number {
-  const nameA = a.name || '';
-  const nameB = b.name || '';
+/* ==========================================================================
+   ENDPOINT API SERVER-SIDE
+   ========================================================================== */
 
-  // 1. Cerca pattern di data/orario nel nome del file (es. 2026-09-15 10 37 17 o 2026-10-22)
-  const dateRegex = /(\d{4})[-_.](\d{2})[-_.](\d{2})(?:[ T_](\d{2})[-_.:](\d{2})(?:[-_.:](\d{2}))?)?/;
-  const matchA = nameA.match(dateRegex);
-  const matchB = nameB.match(dateRegex);
+app.get('/api/config', (_req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.json({
+    driveFolderId: DEFAULT_DRIVE_FOLDER_ID,
+    serverMode: true,
+  });
+});
 
-  if (matchA && matchB) {
-    const keyA = `${matchA[1]}-${matchA[2]}-${matchA[3]} ${matchA[4] || '00'}:${matchA[5] || '00'}:${matchA[6] || '00'}`;
-    const keyB = `${matchB[1]}-${matchB[2]}-${matchB[3]} ${matchB[4] || '00'}:${matchB[5] || '00'}:${matchB[6] || '00'}`;
-    if (keyA !== keyB) {
-      // Ordine DECRESCENTE: il più recente (B) prima del più vecchio (A)
-      return keyB.localeCompare(keyA);
-    }
-  } else if (matchA && !matchB) {
-    return -1;
-  } else if (!matchA && matchB) {
-    return 1;
-  }
-
-  // 2. Controllo se presente campo modified
-  if (a.modified && b.modified && a.modified !== b.modified) {
-    const timeA = new Date(a.modified).getTime();
-    const timeB = new Date(b.modified).getTime();
-    if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) {
-      return timeB - timeA;
-    }
-  }
-
-  // 3. Fallback: Ordinamento alfanumerico decrescente
-  return nameB.localeCompare(nameA, undefined, { numeric: true, sensitivity: 'base' });
-}
-
-/**
- * GET /api/drive/tree
- * Restituisce l'albero gerarchico ricorsivo di Google Drive
- */
 app.get('/api/drive/tree', async (req: Request, res: Response) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
 
   try {
-    const folderId = (req.query.folderId as string) || DEFAULT_DRIVE_FOLDER_ID;
+    const folderId = ((req.query.folderId as string) || '').trim() || DEFAULT_DRIVE_FOLDER_ID;
     const isForce = req.query.force === 'true';
 
     const now = Date.now();
     const cached = driveCache[folderId];
 
-    if (!isForce && cached && (now - cached.timestamp < DRIVE_CACHE_TTL_MS)) {
+    // Strategia Stale-While-Revalidate: risposta istantanea dalla cache e refresh in background se scaduta
+    if (!isForce && cached) {
+      const isStale = now - cached.timestamp >= DRIVE_CACHE_TTL_MS;
+      if (isStale && !cached.refreshing) {
+        cached.refreshing = true;
+        crawlDriveTree(folderId)
+          .then((freshTree) => {
+            driveCache[folderId] = { tree: freshTree, timestamp: Date.now(), refreshing: false };
+          })
+          .catch((bgErr) => {
+            console.warn('[Drive] Errore aggiornamento background:', bgErr);
+            if (driveCache[folderId]) driveCache[folderId].refreshing = false;
+          });
+      }
+
       res.json({
         cached: true,
         timestamp: cached.timestamp,
@@ -439,12 +398,13 @@ app.get('/api/drive/tree', async (req: Request, res: Response) => {
       return;
     }
 
-    console.log(`[Drive] Avvio scansione ricorsiva per folder ID: ${folderId} (force=${isForce})`);
+    console.log(`[Drive] Scansione cartella radice: ${folderId} (force=${isForce})`);
     const tree = await crawlDriveTree(folderId);
 
     driveCache[folderId] = {
       tree,
       timestamp: now,
+      refreshing: false,
     };
 
     res.json({
@@ -455,75 +415,75 @@ app.get('/api/drive/tree', async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error('Errore /api/drive/tree:', err);
-    res.status(500).json({ error: 'Errore durante la scansione di Google Drive', details: err.message });
+    res.status(500).json({
+      error: 'Errore durante la scansione di Google Drive',
+      details: err.message,
+    });
   }
 });
 
-/**
- * GET /api/drive/download/:fileId
- * Proxy di streaming per il download di file (audio/video/dispense) da Google Drive
- */
 app.get('/api/drive/download/:fileId', async (req: Request, res: Response) => {
   try {
     const fileId = req.params.fileId;
-    const requestedName = (req.query.name as string) || `registrazione_${fileId}.mp3`;
-    let cleanFilename = cleanDriveItemName(requestedName, false);
-    if (!/\.[a-zA-Z0-9]+$/.test(cleanFilename)) {
-      cleanFilename += '.mp3';
-    }
-
     if (!fileId) {
       res.status(400).json({ error: 'fileId mancante' });
       return;
     }
 
+    const requestedName = (req.query.name as string) || `file_${fileId}`;
+    const isInline = req.query.inline === '1' || req.query.inline === 'true';
+
+    let cleanFilename = cleanDriveItemName(requestedName, false);
+    if (!/\.[a-zA-Z0-9]+$/.test(cleanFilename)) {
+      cleanFilename += '.pdf';
+    }
+
     const asciiFilename = cleanFilename.replace(/["\\]/g, '').replace(/[^\x20-\x7E]/g, '_');
     const utf8Filename = encodeURIComponent(cleanFilename);
-    const contentDisposition = `attachment; filename="${asciiFilename}"; filename*=UTF-8''${utf8Filename}`;
+    const dispositionType = isInline ? 'inline' : 'attachment';
+    const contentDisposition = `${dispositionType}; filename="${asciiFilename}"; filename*=UTF-8''${utf8Filename}`;
 
-    const downloadUrl = `https://drive.usercontent.google.com/download?id=${encodeURIComponent(fileId)}&export=download`;
+    const upstreamHeaders: Record<string, string> = {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    };
+    if (req.headers.range) {
+      upstreamHeaders['Range'] = req.headers.range;
+    }
 
-    const driveRes = await fetch(downloadUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      },
+    const downloadUrl = `https://drive.usercontent.google.com/download?id=${encodeURIComponent(fileId)}&export=download&confirm=t`;
+
+    let driveRes = await fetch(downloadUrl, {
+      headers: upstreamHeaders,
       redirect: 'follow',
     });
 
     if (!driveRes.ok) {
-      // Prova fallback su uc endpoint standard
       const fallbackUrl = `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}&confirm=t`;
-      const fallbackRes = await fetch(fallbackUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        },
+      driveRes = await fetch(fallbackUrl, {
+        headers: upstreamHeaders,
         redirect: 'follow',
       });
 
-      if (!fallbackRes.ok) {
-        res.status(fallbackRes.status).send(await fallbackRes.text());
+      if (!driveRes.ok) {
+        res.status(driveRes.status).send(await driveRes.text());
         return;
       }
-
-      const contentType = cleanFilename.endsWith('.mp3') 
-        ? 'audio/mpeg' 
-        : (fallbackRes.headers.get('content-type') || 'application/octet-stream');
-
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Disposition', contentDisposition);
-
-      if (fallbackRes.body) {
-        Readable.fromWeb(fallbackRes.body as any).pipe(res);
-      } else {
-        const arrayBuffer = await fallbackRes.arrayBuffer();
-        res.send(Buffer.from(arrayBuffer));
-      }
-      return;
     }
 
-    const contentType = cleanFilename.endsWith('.mp3')
-      ? 'audio/mpeg'
-      : (driveRes.headers.get('content-type') || 'application/octet-stream');
+    const contentType = inferMimeType(
+      cleanFilename,
+      driveRes.headers.get('content-type') || 'application/octet-stream'
+    );
+
+    if (driveRes.status === 206) {
+      res.status(206);
+      const contentRange = driveRes.headers.get('content-range');
+      if (contentRange) res.setHeader('Content-Range', contentRange);
+    }
+
+    const acceptRanges = driveRes.headers.get('accept-ranges');
+    if (acceptRanges) res.setHeader('Accept-Ranges', acceptRanges);
 
     const contentLength = driveRes.headers.get('content-length');
     if (contentLength) res.setHeader('Content-Length', contentLength);
@@ -547,7 +507,6 @@ app.get('/api/drive/download/:fileId', async (req: Request, res: Response) => {
    INTEGRAZIONE FILE STATICI & VITE
    ========================================================================== */
 
-// Servizio diretto dei file statici con MIME type esatti per evitare trasformazioni Vite
 app.get('/style.css', (_req: Request, res: Response) => {
   res.type('text/css').sendFile(path.resolve(__dirname, 'style.css'));
 });
@@ -589,7 +548,6 @@ async function startServer() {
       app.use(express.static(path.resolve(__dirname)));
     }
   } else {
-    // Modalità produzione / Cloud Run: serve i file statici compilati in dist
     app.use(express.static(path.resolve(__dirname, 'dist')));
     app.get('*', (_req: Request, res: Response) => {
       const distIndex = path.resolve(__dirname, 'dist', 'index.html');
@@ -602,7 +560,11 @@ async function startServer() {
   }
 
   app.listen(portNumber, HOST, () => {
-    console.log(`Server Note PDF in ascolto su http://${HOST}:${portNumber} (Ambiente: ${isProduction ? 'Cloud Run / Produzione' : 'Sviluppo'})`);
+    console.log(
+      `Server Fede's Notes in ascolto su http://${HOST}:${portNumber} (Ambiente: ${
+        isProduction ? 'Produzione' : 'Sviluppo'
+      })`
+    );
   });
 }
 

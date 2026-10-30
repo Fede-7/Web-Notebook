@@ -3,32 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-  <title>Fede's Notes - Reader & Archivio PWA</title>
-  <meta name="description" content="Visualizzatore e sincronizzatore offline di dispense universitarie e archivio su tablet.">
+  <title>Fede's Notes</title>
+  <meta name="description" content="PWA per la lettura e consultazione di dispense PDF, registrazioni audio e video lezioni sincronizzate da Google Drive.">
   <meta name="theme-color" content="#090d16">
 
   <!-- Configurazione PWA & Icone -->
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" type="image/svg+xml" href="./icon.svg">
-  <link rel="apple-touch-icon" href="./apple-touch-icon.png">
+  <link rel="apple-touch-icon" href="./pwa-192x192.png">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Fede's Notes">
 
   <!-- OpenGraph & Social -->
-  <meta property="og:title" content="Fede's Notes - Reader & Archivio PWA">
-  <meta property="og:description" content="Visualizzatore e sincronizzatore offline di dispense universitarie e archivio su tablet.">
+  <meta property="og:title" content="Fede's Notes">
+  <meta property="og:description" content="PWA per la lettura e consultazione di dispense PDF, registrazioni audio e video lezioni sincronizzate da Google Drive.">
   <meta property="og:type" content="website">
 
   <!-- Fogli di Stile -->
   <link rel="stylesheet" href="/style.css">
-  <style>
-    svg { max-width: 100%; height: auto; }
-    .search-icon { width: 18px !important; height: 18px !important; }
-    .brand-icon { width: 36px !important; height: 36px !important; }
-    .pdf-card-icon svg { width: 24px !important; height: 24px !important; }
-  </style>
 
   <!-- PDF.js da CDN (messo in cache dal Service Worker per uso offline) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -39,8 +33,9 @@
     <header class="top-nav" role="banner">
       <div class="brand-zone">
         <img src="./icon.svg" alt="Logo Fede's Notes" class="brand-icon" width="36" height="36">
-        <div>
+        <div class="brand-titles">
           <h1 class="brand-title">Fede's Notes</h1>
+          <span id="drive-root-subtitle" class="brand-subtitle">Google Drive</span>
         </div>
       </div>
 
@@ -55,24 +50,14 @@
           <span class="btn-text">Installa App</span>
         </button>
 
-        <!-- Pulsante Aggiorna da GitHub (per sezione PDF) -->
-        <button id="btn-sync" class="btn-primary" title="Sincronizza dispense PDF da GitHub">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <!-- Pulsante Aggiorna da Google Drive -->
+        <button id="btn-drive-sync" class="btn-primary" title="Aggiorna cartelle e file da Google Drive">
+          <svg id="sync-btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10"></polyline>
             <polyline points="1 20 1 14 7 14"></polyline>
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
           </svg>
           <span class="btn-text">Aggiorna</span>
-        </button>
-
-        <!-- Pulsante Aggiorna da Google Drive (per sezione Archivio) -->
-        <button id="btn-drive-sync-top" class="btn-primary hidden" title="Sincronizza archivio da Google Drive">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="23 4 23 10 17 10"></polyline>
-            <polyline points="1 20 1 14 7 14"></polyline>
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-          </svg>
-          <span class="btn-text">Aggiorna Drive</span>
         </button>
 
         <!-- Toggle Tema Giorno / Notte -->
@@ -92,217 +77,128 @@
       </nav>
     </header>
 
-    <!-- Barra Switcher Sezioni (Dispense PDF vs Archivio) -->
-    <nav class="app-tabs-bar" role="tablist" aria-label="Sezioni applicazione">
-      <button id="tab-btn-pdfs" class="tab-btn active" role="tab" aria-selected="true" aria-controls="section-pdfs">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-          <polyline points="14 2 14 8 20 8"></polyline>
-          <line x1="16" y1="13" x2="8" y2="13"></line>
-          <line x1="16" y1="17" x2="8" y2="17"></line>
-        </svg>
-        <span>Dispense PDF</span>
-        <span id="badge-pdf-count" class="tab-badge">0</span>
-      </button>
-
-      <button id="tab-btn-recordings" class="tab-btn" role="tab" aria-selected="false" aria-controls="section-recordings">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-        </svg>
-        <span>Archivio</span>
-        <span id="badge-recordings-count" class="tab-badge tab-badge-accent">3° Anno</span>
-      </button>
+    <!-- Barra Superiore Dinamica: Bottoni generati automaticamente dalle sottocartelle della Root Google Drive -->
+    <nav id="drive-folders-bar" class="app-tabs-bar" role="tablist" aria-label="Sottocartelle principali Google Drive">
+      <!-- I bottoni delle sottocartelle vengono iniettati dinamicamente da app.js -->
     </nav>
 
-    <!-- Barra Avanzamento Sincronizzazione -->
-    <div id="sync-progress-banner" class="sync-progress-banner hidden" role="region" aria-label="Progresso sincronizzazione">
-      <div class="progress-header">
-        <span id="progress-label">Verifica aggiornamenti...</span>
+    <!-- Sotto-barra: Ultimo aggiornamento e Ricerca Rapida nella cartella selezionata -->
+    <div class="sub-bar">
+      <div class="sync-meta-info">
+        <span id="drive-meta-text">Sincronizzazione con Google Drive...</span>
       </div>
-      <div class="progress-track">
-        <div id="progress-fill" class="progress-fill"></div>
+
+      <div class="search-box">
+        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" id="drive-search-input" class="search-input" placeholder="Cerca file, PDF o materia..." aria-label="Cerca file, PDF o materia">
+        <button id="drive-search-clear" class="search-clear" aria-label="Cancella testo di ricerca">✕</button>
       </div>
     </div>
 
-    <!-- ====================================================================
-         SEZIONE 1: DISPENSE PDF (GitHub Offline Reader)
-         ==================================================================== -->
-    <section id="section-pdfs" class="app-section" role="tabpanel" aria-labelledby="tab-btn-pdfs">
-      <!-- Sotto-barra: Stato Ultima Sincronizzazione e Ricerca Rapida -->
-      <div class="sub-bar">
-        <div class="sync-meta-info">
-          <span id="status-dot" class="status-dot" title="Online"></span>
-          <span id="sync-meta-text">Nessuna sincronizzazione effettuata</span>
-        </div>
-
-        <div class="search-box">
-          <svg class="search-icon" width="18" height="18" style="width: 18px; height: 18px; max-width: 18px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-          <input type="text" id="search-input" class="search-input" placeholder="Cerca materia o semestre..." aria-label="Cerca materia o semestre">
-          <button id="search-clear" class="search-clear" aria-label="Cancella testo di ricerca">✕</button>
-        </div>
+    <!-- Contenuto Principale Dinamico -->
+    <main class="main-content" id="main-content">
+      <!-- Spinner di caricamento iniziale -->
+      <div id="drive-loading-state" class="drive-loading-state hidden">
+        <div class="spinner"></div>
+        <p id="drive-loading-text">Lettura cartelle da Google Drive in corso...</p>
       </div>
 
-      <!-- Contenuto Principale: Box e Card dei PDF -->
-      <main class="main-content">
-        <div id="pdf-groups-container"></div>
+      <!-- Vista dei file e sottocartelle della cartella selezionata -->
+      <div id="drive-content-view" class="drive-tree-view"></div>
 
-        <!-- Stato Vuoto (Empty State) -->
-        <div id="empty-state" class="empty-state">
-          <div class="empty-state-icon" aria-hidden="true">
-            <svg width="32" height="32" style="width: 32px; height: 32px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
-              <line x1="12" y1="18" x2="12" y2="12"></line>
-              <line x1="9" y1="15" x2="15" y2="15"></line>
+      <!-- Stato Vuoto -->
+      <div id="drive-empty-state" class="empty-state hidden">
+        <div class="empty-state-icon" aria-hidden="true">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </div>
+        <h2 id="drive-empty-title" class="empty-state-title">Nessun file trovato</h2>
+        <p id="drive-empty-desc" class="empty-state-desc">
+          La sottocartella selezionata non contiene elementi corrispondenti. Premi Aggiorna per rileggere la cartella condivisa su Google Drive.
+        </p>
+        <div class="empty-state-actions">
+          <button id="btn-drive-empty-refresh" class="btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
             </svg>
-          </div>
-          <h2 id="empty-state-title" class="empty-state-title">Nessun PDF scaricato</h2>
-          <p id="empty-state-desc" class="empty-state-desc">
-            Premi <strong>Aggiorna</strong> per scansionare la repository GitHub e scaricare i PDF sul tuo dispositivo per la lettura offline, oppure prova subito con i dati di esempio.
-          </p>
-          <div class="empty-state-actions">
-            <button id="btn-empty-sync" class="btn-primary">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <polyline points="23 4 23 10 17 10"></polyline>
-                <polyline points="1 20 1 14 7 14"></polyline>
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-              </svg>
-              <span>Aggiorna da GitHub</span>
-            </button>
-            <button id="btn-empty-demo" class="btn-secondary">
-              Carica note di esempio (Demo)
-            </button>
-          </div>
-        </div>
-      </main>
-    </section>
-
-    <!-- ====================================================================
-         SEZIONE 2: REGISTRAZIONI AUDIO LEZIONI (Google Drive)
-         ==================================================================== -->
-    <section id="section-recordings" class="app-section hidden" role="tabpanel" aria-labelledby="tab-btn-recordings">
-      <!-- Sotto-barra Registrazioni: Info Drive, Ricarica, Ricerca -->
-      <div class="sub-bar">
-        <div class="sync-meta-info">
-          <span id="drive-status-dot" class="status-dot status-dot-drive" title="Google Drive"></span>
-          <span id="drive-meta-text">Google Drive: 3° ANNO</span>
-        </div>
-
-        <div class="search-box">
-          <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-          <input type="text" id="drive-search-input" class="search-input" placeholder="Cerca lezione o registrazione..." aria-label="Cerca lezione o registrazione">
-          <button id="drive-search-clear" class="search-clear" aria-label="Cancella testo di ricerca">✕</button>
+            <span>Aggiorna da Google Drive</span>
+          </button>
         </div>
       </div>
+    </main>
 
-      <!-- Barra Breadcrumb Gerarchica (Anno > Semestre > Materia > Lezione) -->
-      <div id="drive-breadcrumbs-bar" class="drive-breadcrumbs-bar">
-        <nav class="drive-breadcrumbs" id="drive-breadcrumbs" aria-label="Percorso cartelle">
-          <!-- Generato dinamicamente -->
-        </nav>
-        <button id="btn-drive-refresh" class="btn-secondary btn-sm" title="Aggiorna da Google Drive">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="23 4 23 10 17 10"></polyline>
-            <polyline points="1 20 1 14 7 14"></polyline>
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-          </svg>
-          <span>Sincronizza Drive</span>
-        </button>
-      </div>
-
-      <!-- Contenitore Principale Navigazione Ricorsiva Google Drive -->
-      <main class="main-content">
-        <!-- Spinner di caricamento Drive -->
-        <div id="drive-loading-state" class="drive-loading-state hidden">
-          <div class="spinner"></div>
-          <p id="drive-loading-text">Scansione ricorsiva di Google Drive in corso...</p>
+    <!-- Barra Azioni Fluttuante Selezione Multipla (Download Multiplo) -->
+    <aside id="recordings-batch-bar" class="recordings-batch-bar hidden" aria-label="Azioni selezione multipla">
+      <div class="batch-bar-content">
+        <div class="batch-selection-info">
+          <span id="batch-selected-count" class="batch-count-badge">0</span>
+          <span class="batch-count-label">file selezionati</span>
         </div>
 
-        <!-- Vista Albero/Livello Corrente -->
-        <div id="drive-tree-view" class="drive-tree-view"></div>
-
-        <!-- Stato Vuoto Registrazioni Drive -->
-        <div id="drive-empty-state" class="empty-state hidden">
-          <div class="empty-state-icon" aria-hidden="true">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-              <line x1="12" y1="19" x2="12" y2="23"></line>
-              <line x1="8" y1="23" x2="16" y2="23"></line>
+        <div class="batch-actions-buttons">
+          <button id="btn-batch-select-all" class="btn-secondary btn-sm" title="Seleziona tutti i file visibili">
+            Seleziona Tutti
+          </button>
+          <button id="btn-batch-clear" class="btn-secondary btn-sm" title="Deseleziona tutto">
+            Annulla
+          </button>
+          <button id="btn-batch-download" class="btn-primary btn-sm" title="Scarica tutti i file selezionati">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
             </svg>
-          </div>
-          <h2 id="drive-empty-title" class="empty-state-title">Nessuna registrazione trovata</h2>
-          <p id="drive-empty-desc" class="empty-state-desc">
-            La cartella collegata su Google Drive (<strong>3° ANNO / 1° Semestre / IngSw</strong>) non contiene ancora file audio caricati.
-            Puoi ricaricare la scansione live oppure esplorare subito con le lezioni demo di prova.
-          </p>
-          <div class="empty-state-actions">
-            <button id="btn-drive-empty-refresh" class="btn-primary">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <polyline points="23 4 23 10 17 10"></polyline>
-                <polyline points="1 20 1 14 7 14"></polyline>
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-              </svg>
-              <span>Aggiorna da Drive</span>
-            </button>
-            <button id="btn-drive-empty-demo" class="btn-secondary">
-              Carica lezioni demo di IngSw
-            </button>
-          </div>
+            <span id="btn-batch-download-text">Scarica (0)</span>
+          </button>
         </div>
-      </main>
-
-      <!-- Barra Azioni Fluttuante Selezione Multipla (Download Multiplo) -->
-      <aside id="recordings-batch-bar" class="recordings-batch-bar hidden" aria-label="Azioni selezione multipla">
-        <div class="batch-bar-content">
-          <div class="batch-selection-info">
-            <span id="batch-selected-count" class="batch-count-badge">0</span>
-            <span class="batch-count-label">registrazioni selezionate</span>
-          </div>
-
-          <div class="batch-actions-buttons">
-            <button id="btn-batch-select-all" class="btn-secondary btn-sm" title="Seleziona tutte le registrazioni di questa lezione">
-              Seleziona Tutte
-            </button>
-            <button id="btn-batch-clear" class="btn-secondary btn-sm" title="Deseleziona tutto">
-              Annulla
-            </button>
-            <button id="btn-batch-download" class="btn-primary btn-sm" title="Scarica tutte le registrazioni selezionate">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-              </svg>
-              <span id="btn-batch-download-text">Scarica Selezionate (0)</span>
-            </button>
-          </div>
-        </div>
-      </aside>
-
-      <!-- Mini Player Audio di Anteprima Fluttuante -->
-      <div id="audio-player-bar" class="audio-player-bar hidden" role="region" aria-label="Lettore anteprima audio">
-        <div class="audio-player-track-info">
-          <span class="audio-pulse-indicator"></span>
-          <div class="audio-track-details">
-            <div id="audio-player-title" class="audio-player-title">Titolo Registrazione</div>
-            <div id="audio-player-subtitle" class="audio-player-subtitle">Lezione / Materia</div>
-          </div>
-        </div>
-        <audio id="global-audio-element" controls preload="none" class="native-audio-player"></audio>
-        <button id="btn-audio-player-close" class="btn-icon btn-sm" title="Chiudi lettore audio">✕</button>
       </div>
-    </section>
+    </aside>
+
+    <!-- Mini Player Audio Fluttuante -->
+    <div id="audio-player-bar" class="audio-player-bar hidden" role="region" aria-label="Lettore audio">
+      <div class="audio-player-track-info">
+        <div class="recording-audio-icon type-audio" style="width: 34px; height: 34px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+            <line x1="12" y1="19" x2="12" y2="23"></line>
+            <line x1="8" y1="23" x2="16" y2="23"></line>
+          </svg>
+        </div>
+        <div class="audio-track-details">
+          <div id="audio-player-title" class="audio-player-title">Titolo Registrazione</div>
+          <div id="audio-player-subtitle" class="audio-player-subtitle">Cartella</div>
+        </div>
+      </div>
+      <audio id="global-audio-element" controls preload="none" class="native-audio-player"></audio>
+      <button id="btn-audio-player-close" class="btn-icon btn-sm" title="Chiudi lettore audio">✕</button>
+    </div>
+  </div>
+
+  <!-- MODALE LETTORE VIDEO (.MP4) -->
+  <div id="video-player-overlay" class="video-player-overlay hidden" role="dialog" aria-modal="true" aria-label="Lettore Video">
+    <div class="video-player-dialog">
+      <header class="video-player-header">
+        <div class="video-header-titles">
+          <h2 id="video-player-title" class="video-player-title">Lezione Video</h2>
+          <div id="video-player-subtitle" class="video-player-subtitle">Cartella</div>
+        </div>
+        <button id="btn-video-close" class="viewer-btn-icon" title="Chiudi video (Esc)">✕</button>
+      </header>
+      <div class="video-player-body">
+        <video id="global-video-element" controls playsinline class="native-video-player"></video>
+      </div>
+    </div>
   </div>
 
   <!-- VISUALIZZATORE PDF A SCHERMO INTERO (PDF.js) -->
   <div id="pdf-viewer-overlay" class="pdf-viewer-overlay hidden" role="dialog" aria-modal="true" aria-label="Visualizzatore PDF">
-    <!-- Toolbar Superiore Visualizzatore -->
     <header class="pdf-viewer-toolbar">
       <div class="viewer-left-group">
         <button id="btn-viewer-back" class="btn-viewer-back" title="Torna alla schermata principale (Esc)">
@@ -315,13 +211,17 @@
 
         <div style="min-width: 0;">
           <h2 id="viewer-doc-title" class="viewer-doc-title">Titolo Dispensa</h2>
-          <div id="viewer-doc-subtitle" class="viewer-doc-subtitle">Percorso / Nome File</div>
+          <div id="viewer-doc-subtitle" class="viewer-doc-subtitle">Cartella / Nome File</div>
         </div>
       </div>
 
-      <!-- Controlli Superiori: Vai all'Indice & Modalità Notturna -->
       <div class="viewer-controls-group">
-        <!-- Pulsante rapido per saltare all'indice del documento -->
+        <button id="btn-viewer-zoom-out" class="viewer-btn-icon" title="Riduci zoom">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
+        <button id="btn-viewer-zoom-in" class="viewer-btn-icon" title="Aumenta zoom">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
         <button id="btn-go-to-index" class="btn-viewer-action" title="Vai all'indice del documento">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="8" y1="6" x2="21" y2="6"></line>
@@ -333,15 +233,12 @@
           </svg>
           <span>Indice</span>
         </button>
-
-        <!-- Modalità Notturna Lettura PDF -->
         <button id="btn-invert-pdf" class="viewer-btn-icon" title="Inverti colori PDF per lettura al buio">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
         </button>
       </div>
     </header>
 
-    <!-- Area Foglio PDF -->
     <div id="pdf-viewer-stage" class="pdf-viewer-stage">
       <div id="viewer-loading" class="viewer-loading-state hidden">
         <div class="spinner"></div>
@@ -349,7 +246,6 @@
       </div>
     </div>
 
-    <!-- Barra di Paginazione Fluttuante in Basso (Avanti, Indietro, Numeri Pagina) -->
     <nav id="viewer-bottom-pagination" class="viewer-bottom-pagination" aria-label="Navigazione pagine">
       <button id="btn-prev-page" class="viewer-page-nav-btn" title="Pagina precedente (Freccia Sinistra)">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
